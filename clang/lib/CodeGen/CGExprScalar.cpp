@@ -2053,9 +2053,16 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
   }
   case CK_AtomicToNonAtomic:
   case CK_NonAtomicToAtomic:
-  case CK_NoOp:
   case CK_UserDefinedConversion:
     return Visit(const_cast<Expr*>(E));
+
+  case CK_NoOp: {
+    // CK_NoOp can model a pointer qualification conversion, which can remove
+    // an array bound and change the IR type.
+    // FIXME: Once pointee types are removed from IR, remove this.
+    llvm::Value *V = Visit(const_cast<Expr *>(E));
+    return V ? Builder.CreateBitCast(V, ConvertType(DestTy)) : nullptr;
+  }
 
   case CK_BaseToDerived: {
     const CXXRecordDecl *DerivedClassDecl = DestTy->getPointeeCXXRecordDecl();

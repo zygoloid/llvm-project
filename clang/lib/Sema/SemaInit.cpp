@@ -8056,9 +8056,23 @@ ExprResult InitializationSequence::Perform(Sema &S,
       if (S.CheckExceptionSpecCompatibility(CurInit.get(), DestType))
         return ExprError();
 
+      // C++2a [conv.init.list]p3:
+      //   The type of the temporary is the type referenced by T, unless T is
+      //   "reference to array of unknown bound of U" [...]
+      QualType TempType = Step->Type;
+      if (auto *IAT = S.Context.getAsIncompleteArrayType(Step->Type)) {
+        auto *CAT = S.Context.getAsConstantArrayType(CurInit.get()->getType());
+        assert(CAT && "array temporary has unknown bound?");
+        TempType = S.Context.getQualifiedType(
+            S.Context.getConstantArrayType(IAT->getElementType(),
+                                           CAT->getSize(), nullptr,
+                                           ArrayType::Normal, 0),
+            Step->Type.getQualifiers());
+      }
+
       // Materialize the temporary into memory.
       MaterializeTemporaryExpr *MTE = S.CreateMaterializeTemporaryExpr(
-          Step->Type, CurInit.get(), Entity.getType()->isLValueReferenceType());
+          TempType, CurInit.get(), Entity.getType()->isLValueReferenceType());
       CurInit = MTE;
 
       // If we're extending this temporary to automatic storage duration -- we
