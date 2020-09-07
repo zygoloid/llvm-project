@@ -4,7 +4,7 @@ struct S { char buf[32]; };
 template<S s> constexpr const char *begin() { return s.buf; }
 template<S s> constexpr const char *end() { return s.buf + __builtin_strlen(s.buf); }
 
-// CHECK: [[HELLO:@_ZTAXtl1StlA32_cLc104ELc101ELc108ELc108ELc111ELc32ELc119ELc111ELc114ELc108ELc100ELc0ELc0ELc0ELc0ELc0ELc0ELc0ELc0ELc0ELc0ELc0ELc0ELc0ELc0ELc0ELc0ELc0ELc0ELc0ELc0ELc0EEEE]] = linkonce_odr constant { <{ [11 x i8], [21 x i8] }> } { <{ [11 x i8], [21 x i8] }> <{ [11 x i8] c"hello world", [21 x i8] zeroinitializer }> }, comdat
+// CHECK: [[HELLO:@_ZTAXtl1StlA32_cLc104ELc101ELc108ELc108ELc111ELc32ELc119ELc111ELc114ELc108ELc100EEEE]] = linkonce_odr constant { <{ [11 x i8], [21 x i8] }> } { <{ [11 x i8], [21 x i8] }> <{ [11 x i8] c"hello world", [21 x i8] zeroinitializer }> }, comdat
 
 // CHECK: @p = global i8* getelementptr inbounds ({{.*}}* [[HELLO]], i32 0, i32 0, i32 0, i32 0)
 const char *p = begin<S{"hello world"}>();

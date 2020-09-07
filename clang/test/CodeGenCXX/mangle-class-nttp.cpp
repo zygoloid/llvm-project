@@ -8,13 +8,15 @@ template<A> void f() {}
 // CHECK: define weak_odr void @_Z1fIXtl1ALi1ELi2EEEEvv(
 template void f<A{1, 2}>();
 
-struct B { int *p; };
+struct B { int *p; int k; };
 template<B> void f() {}
 
 int n = 0;
 // CHECK: define weak_odr void @_Z1fIXtl1BadL_Z1nEEEEvv(
 template void f<B{&n}>();
-// CHECK: define weak_odr void @_Z1fIXtl1BLPi0EEEEvv(
+// CHECK: define weak_odr void @_Z1fIXtl1BLPi0ELi1EEEEvv(
+template void f<B{nullptr, 1}>();
+// CHECK: define weak_odr void @_Z1fIXtl1BEEEvv(
 template void f<B{nullptr}>();
 // CHECK: define weak_odr void @_Z1fIXtl1BLPi32EEEEvv(
 template void f<B{fold((int*)32)}>();
@@ -52,9 +54,11 @@ template<C> void f() {}
 template void f<C{&derived.b}>();
 
 // Pointers to members.
-struct D { const int Derived::*p; };
+struct D { const int Derived::*p; int k; };
 template<D> void f() {}
-// CHECK: define weak_odr void @_Z1fIXtl1DLM7DerivedKi0EEEEvv
+// CHECK: define weak_odr void @_Z1fIXtl1DLM7DerivedKi0ELi1EEEEvv
+template void f<D{nullptr, 1}>();
+// CHECK: define weak_odr void @_Z1fIXtl1DEEEvv
 template void f<D{nullptr}>();
 // CHECK: define weak_odr void @_Z1fIXtl1DmcM7DerivedKiadL_ZN1A1aEEEEEEvv
 template void f<D{&A::a}>();
@@ -79,14 +83,31 @@ template<E> void f() {}
 // Union members.
 // CHECK: define weak_odr void @_Z1fIXL1EEEEvv(
 template void f<E{}>();
-// CHECK: define weak_odr void @_Z1fIXtl1Edi1nLi0EEEEvv(
+// CHECK: define weak_odr void @_Z1fIXtl1EEEEvv(
 template void f<E(0)>();
+// CHECK: define weak_odr void @_Z1fIXtl1Edi1nLi42EEEEvv(
+template void f<E(42)>();
 // CHECK: define weak_odr void @_Z1fIXtl1Edi1fLf00000000EEEEvv(
 template void f<E(0.f)>();
 
-// Extensions.
+// Extensions, and dropping trailing zero-initialized elements of 'tl'
+// manglings.
 typedef int __attribute__((ext_vector_type(3))) VI3;
 struct F { VI3 v; _Complex int ci; _Complex float cf; };
 template<F> void f() {}
 // CHECK: define weak_odr void @_Z1fIXtl1FtlDv3_iLi1ELi2ELi3EEtlCiLi4ELi5EEtlCfLf40c00000ELf40e00000EEEEEvv
 template void f<F{{1, 2, 3}, {4, 5}, {6, 7}}>();
+// CHECK: define weak_odr void @_Z1fIXtl1FtlDv3_iLi1ELi2ELi3EEtlCiLi4ELi5EEtlCfLf40c00000EEEEEvv
+template void f<F{{1, 2, 3}, {4, 5}, {6, 0}}>();
+// CHECK: define weak_odr void @_Z1fIXtl1FtlDv3_iLi1ELi2ELi3EEtlCiLi4ELi5EEEEEvv
+template void f<F{{1, 2, 3}, {4, 5}, {0, 0}}>();
+// CHECK: define weak_odr void @_Z1fIXtl1FtlDv3_iLi1ELi2ELi3EEtlCiLi4EEEEEvv
+template void f<F{{1, 2, 3}, {4, 0}, {0, 0}}>();
+// CHECK: define weak_odr void @_Z1fIXtl1FtlDv3_iLi1ELi2ELi3EEEEEvv
+template void f<F{{1, 2, 3}, {0, 0}, {0, 0}}>();
+// CHECK: define weak_odr void @_Z1fIXtl1FtlDv3_iLi1ELi2EEEEEvv
+template void f<F{{1, 2, 0}, {0, 0}, {0, 0}}>();
+// CHECK: define weak_odr void @_Z1fIXtl1FtlDv3_iLi1EEEEEvv
+template void f<F{{1, 0, 0}, {0, 0}, {0, 0}}>();
+// CHECK: define weak_odr void @_Z1fIXtl1FEEEvv
+template void f<F{{0, 0, 0}, {0, 0}, {0, 0}}>();

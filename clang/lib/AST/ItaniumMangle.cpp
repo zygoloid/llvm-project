@@ -4953,6 +4953,73 @@ void CXXNameMangler::mangleTemplateArg(TemplateArgument A) {
   }
 }
 
+/// Determine whether a given value is equivalent to zero-initialization for
+/// the purpose of discarding a trailing portion of a 'tl' mangling.
+static bool isZeroInitialized(const APValue &V) {
+  // FIXME: mangleValueInTemplateArg has quadratic time complexity due to using
+  // this. We could do the same thing in linear time, for example by instead
+  // mangling the whole value speculatively and retroactively deleting the
+  // longest trailing part of each 'tl' mangling that is equivalent to zero-
+  // initialization.
+  switch (V.getKind()) {
+  case APValue::None:
+  case APValue::Indeterminate:
+  case APValue::AddrLabelDiff:
+    return false;
+
+  case APValue::Struct:
+    for (unsigned I = 0, N = V.getStructNumBases(); I != N; ++I)
+      if (!isZeroInitialized(V.getStructBase(I)))
+        return false;
+    // FIXME: Ignore anonymous bit-fields.
+    for (unsigned I = 0, N = V.getStructNumFields(); I != N; ++I)
+      if (!isZeroInitialized(V.getStructField(I)))
+        return false;
+    return true;
+
+  case APValue::Union: {
+    const FieldDecl *FD = V.getUnionField();
+    // FIXME: Empty unions are always zero-initialized.
+    if (!FD || FD->getFieldIndex() != 0)
+      return false;
+    return isZeroInitialized(V.getUnionValue());
+  }
+
+  case APValue::Array:
+    for (unsigned I = 0, N = V.getArrayInitializedElts(); I != N; ++I)
+      if (!isZeroInitialized(V.getArrayInitializedElt(I)))
+        return false;
+    return !V.hasArrayFiller() || isZeroInitialized(V.getArrayFiller());
+
+  case APValue::Vector:
+    for (unsigned I = 0, N = V.getVectorLength(); I != N; ++I)
+      if (!isZeroInitialized(V.getVectorElt(I)))
+        return false;
+    return true;
+
+  case APValue::Int:
+    return !V.getInt();
+
+  case APValue::Float:
+    return V.getFloat().isZero();
+
+  case APValue::FixedPoint:
+    return !V.getFixedPoint().getValue();
+
+  case APValue::ComplexFloat:
+    return V.getComplexFloatReal().isZero() && V.getComplexFloatImag().isZero();
+
+  case APValue::ComplexInt:
+    return !V.getComplexIntReal() && !V.getComplexIntImag();
+
+  case APValue::LValue:
+    return V.isNullPointer();
+
+  case APValue::MemberPointer:
+    return !V.getMemberPointerDecl();
+  }
+}
+
 void CXXNameMangler::mangleValueInTemplateArg(QualType T, const APValue &V) {
   // Proposed in https://github.com/itanium-cxx-abi/cxx-abi/issues/63.
   switch (V.getKind()) {
@@ -4970,13 +5037,27 @@ void CXXNameMangler::mangleValueInTemplateArg(QualType T, const APValue &V) {
     const CXXRecordDecl *RD = T->getAsCXXRecordDecl();
     assert(RD && "unexpected type for record value");
 
+    unsigned NBases = V.getStructNumBases();
+    unsigned NFields = V.getStructNumFields();
+    // FIXME: Ignore anonymous bit-fields.
+    while (NFields && isZeroInitialized(V.getStructField(NFields - 1)))
+      --NFields;
+    if (!NFields)
+      while (NBases && isZeroInitialized(V.getStructBase(NBases - 1)))
+        --NBases;
+
     // <expression> ::= tl <type> <braced-expression>* E
     Out << "tl";
     mangleType(T);
     unsigned BaseIndex = 0;
-    for (const CXXBaseSpecifier &BS : RD->bases())
+    for (const CXXBaseSpecifier &BS : RD->bases()) {
+      if (BaseIndex == NBases)
+        break;
       mangleValueInTemplateArg(BS.getType(), V.getStructBase(BaseIndex++));
+    }
     for (const FieldDecl *FD : RD->fields()) {
+      if (FD->getFieldIndex() == NFields)
+        break;
       if (FD->isUnnamedBitfield())
         continue;
       mangleValueInTemplateArg(FD->getType(),
@@ -5001,9 +5082,11 @@ void CXXNameMangler::mangleValueInTemplateArg(QualType T, const APValue &V) {
     // <braced-expression> ::= di <field source-name> <braced-expression>
     Out << "tl";
     mangleType(T);
-    Out << "di";
-    mangleSourceName(FD->getIdentifier());
-    mangleValueInTemplateArg(FD->getType(), V.getUnionValue());
+    if (!isZeroInitialized(V)) {
+      Out << "di";
+      mangleSourceName(FD->getIdentifier());
+      mangleValueInTemplateArg(FD->getType(), V.getUnionValue());
+    }
     Out << 'E';
     return;
   }
@@ -5014,8 +5097,16 @@ void CXXNameMangler::mangleValueInTemplateArg(QualType T, const APValue &V) {
 
     Out << "tl";
     mangleType(T);
-    // FIXME: Drop trailing elements if and only if they're zeroish.
-    for (unsigned I = 0; I != V.getArraySize(); ++I) {
+
+    // Drop trailing zero-initialized elements.
+    unsigned N = V.getArraySize();
+    if (!V.hasArrayFiller() || isZeroInitialized(V.getArrayFiller())) {
+      N = V.getArrayInitializedElts();
+      while (N && isZeroInitialized(V.getArrayInitializedElt(N - 1)))
+        --N;
+    }
+
+    for (unsigned I = 0; I != N; ++I) {
       const APValue &Elem = I < V.getArrayInitializedElts()
                                 ? V.getArrayInitializedElt(I)
                                 : V.getArrayFiller();
@@ -5030,7 +5121,10 @@ void CXXNameMangler::mangleValueInTemplateArg(QualType T, const APValue &V) {
 
     Out << "tl";
     mangleType(T);
-    for (unsigned I = 0, N = V.getVectorLength(); I != N; ++I)
+    unsigned N = V.getVectorLength();
+    while (N && isZeroInitialized(V.getVectorElt(N - 1)))
+      --N;
+    for (unsigned I = 0; I != N; ++I)
       mangleValueInTemplateArg(VT->getElementType(), V.getVectorElt(I));
     Out << 'E';
     return;
@@ -5055,13 +5149,20 @@ void CXXNameMangler::mangleValueInTemplateArg(QualType T, const APValue &V) {
     const ComplexType *CT = T->castAs<ComplexType>();
     Out << "tl";
     mangleType(T);
-    Out << 'L';
-    mangleType(CT->getElementType());
-    mangleFloat(V.getComplexFloatReal());
-    Out << "EL";
-    mangleType(CT->getElementType());
-    mangleFloat(V.getComplexFloatImag());
-    Out << "EE";
+    if (V.getComplexFloatReal().isNonZero() ||
+        V.getComplexFloatImag().isNonZero()) {
+      Out << 'L';
+      mangleType(CT->getElementType());
+      mangleFloat(V.getComplexFloatReal());
+      Out << 'E';
+    }
+    if (V.getComplexFloatImag().isNonZero()) {
+      Out << 'L';
+      mangleType(CT->getElementType());
+      mangleFloat(V.getComplexFloatImag());
+      Out << 'E';
+    }
+    Out << 'E';
     return;
   }
 
@@ -5069,8 +5170,11 @@ void CXXNameMangler::mangleValueInTemplateArg(QualType T, const APValue &V) {
     const ComplexType *CT = T->castAs<ComplexType>();
     Out << "tl";
     mangleType(T);
-    mangleIntegerLiteral(CT->getElementType(), V.getComplexIntReal());
-    mangleIntegerLiteral(CT->getElementType(), V.getComplexIntImag());
+    if (V.getComplexIntReal().getBoolValue() ||
+        V.getComplexIntImag().getBoolValue())
+      mangleIntegerLiteral(CT->getElementType(), V.getComplexIntReal());
+    if (V.getComplexIntImag().getBoolValue())
+      mangleIntegerLiteral(CT->getElementType(), V.getComplexIntImag());
     Out << 'E';
     return;
   }
