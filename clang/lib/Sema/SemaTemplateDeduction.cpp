@@ -420,10 +420,14 @@ static Sema::TemplateDeductionResult DeduceNonTypeTemplateArgument(
   // FIXME: It's not clear how deduction of a parameter of reference
   // type from an argument (of non-reference type) should be performed.
   // For now, we just remove reference types from both sides and let
-  // the final check for matching types sort out the mess.
+  // the final check for matching types sort out the mess. Similarly we ignore
+  // qualifiers and non-dependent portions of the type, because we're only
+  // supposed to deduce "template parameters in the type of P", not deduce the
+  // full parameter type.
   return DeduceTemplateArgumentsByTypeMatch(
       S, TemplateParams, ParamType.getNonReferenceType(),
-      ValueType.getNonReferenceType(), Info, Deduced, TDF_SkipNonDependent,
+      ValueType.getNonReferenceType(), Info, Deduced,
+      TDF_SkipNonDependent | TDF_IgnoreQualifiers,
       /*PartialOrdering=*/false,
       /*ArrayBound=*/NewDeduced.wasDeducedFromArrayBound());
 }
@@ -1609,14 +1613,18 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
       return Sema::TDK_Success;
     }
   } else if (!Param->isDependentType()) {
-    CanQualType ParamUnqualType = CanParam.getUnqualifiedType(),
-                ArgUnqualType = CanArg.getUnqualifiedType();
-    bool Success =
-        (TDF & TDF_AllowCompatibleFunctionType)
-            ? S.isSameOrCompatibleFunctionType(ParamUnqualType, ArgUnqualType)
-            : ParamUnqualType == ArgUnqualType;
-    if (Success)
+    if (!(TDF & TDF_SkipNonDependent)) {
+      CanQualType ParamUnqualType = CanParam.getUnqualifiedType(),
+                  ArgUnqualType = CanArg.getUnqualifiedType();
+      bool Success =
+          (TDF & TDF_AllowCompatibleFunctionType)
+              ? S.isSameOrCompatibleFunctionType(ParamUnqualType, ArgUnqualType)
+              : ParamUnqualType == ArgUnqualType;
+      if (Success)
+        return Sema::TDK_Success;
+    } else {
       return Sema::TDK_Success;
+    }
   }
 
   switch (Param->getTypeClass()) {
