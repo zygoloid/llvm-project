@@ -556,6 +556,7 @@ private:
                           unsigned NumTemplateArgs);
   void mangleTemplateArgs(const TemplateArgumentList &AL);
   void mangleTemplateArg(TemplateArgument A);
+  void mangleValueInTemplateArg(QualType T, const APValue &V);
 
   void mangleTemplateParameter(unsigned Depth, unsigned Index);
 
@@ -650,23 +651,13 @@ void CXXNameMangler::mangle(GlobalDecl GD) {
   Out << "_Z";
   if (isa<FunctionDecl>(GD.getDecl()))
     mangleFunctionEncoding(GD);
-  else if (const VarDecl *VD = dyn_cast<VarDecl>(GD.getDecl()))
-    mangleName(VD);
+  else if (isa<VarDecl, FieldDecl, MSGuidDecl, TemplateParamObjectDecl,
+               BindingDecl>(GD.getDecl()))
+    mangleName(GD);
   else if (const IndirectFieldDecl *IFD =
                dyn_cast<IndirectFieldDecl>(GD.getDecl()))
     mangleName(IFD->getAnonField());
-  else if (const FieldDecl *FD = dyn_cast<FieldDecl>(GD.getDecl()))
-    mangleName(FD);
-  else if (const MSGuidDecl *GuidD = dyn_cast<MSGuidDecl>(GD.getDecl()))
-    mangleName(GuidD);
-  else if (const BindingDecl *BD = dyn_cast<BindingDecl>(GD.getDecl()))
-    mangleName(BD);
-  else if (isa<TemplateParamObjectDecl>(GD.getDecl())) {
-    DiagnosticsEngine &Diags = Context.getDiags();
-    unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
-      "cannot mangle template parameter objects yet");
-    Diags.Report(SourceLocation(), DiagID);
-  } else
+  else
     llvm_unreachable("unexpected kind of global decl");
 }
 
@@ -1308,6 +1299,15 @@ void CXXNameMangler::mangleUnqualifiedName(GlobalDecl GD,
       llvm::raw_svector_ostream GUIDOS(GUID);
       Context.mangleMSGuidDecl(GD, GUIDOS);
       Out << GUID.size() << GUID;
+      break;
+    }
+
+    if (auto *TPO = dyn_cast<TemplateParamObjectDecl>(ND)) {
+      // Proposed in https://github.com/itanium-cxx-abi/cxx-abi/issues/63.
+      Out << "TAX";
+      mangleValueInTemplateArg(TPO->getType().getUnqualifiedType(),
+                               TPO->getValue());
+      Out << "E";
       break;
     }
 
@@ -4904,10 +4904,21 @@ void CXXNameMangler::mangleTemplateArg(TemplateArgument A) {
     break;
   case TemplateArgument::Declaration: {
     //  <expr-primary> ::= L <mangled-name> E # external name
+    ValueDecl *D = A.getAsDecl();
+
+    // Template parameter objects are modeled by reproducing a source form
+    // produced as if by aggregate initialization.
+    if (auto *TPO = dyn_cast<TemplateParamObjectDecl>(D)) {
+      Out << 'X';
+      mangleValueInTemplateArg(TPO->getType().getUnqualifiedType(),
+                               TPO->getValue());
+      Out << 'E';
+      break;
+    }
+
     // Clang produces AST's where pointer-to-member-function expressions
     // and pointer-to-function expressions are represented as a declaration not
     // an expression. We compensate for it here to produce the correct mangling.
-    ValueDecl *D = A.getAsDecl();
     bool compensateMangling = !A.getParamTypeForDecl()->isReferenceType();
     if (compensateMangling) {
       Out << 'X';
@@ -4939,6 +4950,280 @@ void CXXNameMangler::mangleTemplateArg(TemplateArgument A) {
       mangleTemplateArg(P);
     Out << 'E';
   }
+  }
+}
+
+void CXXNameMangler::mangleValueInTemplateArg(QualType T, const APValue &V) {
+  // Proposed in https://github.com/itanium-cxx-abi/cxx-abi/issues/63.
+  switch (V.getKind()) {
+  case APValue::None:
+  case APValue::Indeterminate:
+    Out << 'L';
+    mangleType(T);
+    Out << 'E';
+    return;
+
+  case APValue::AddrLabelDiff:
+    llvm_unreachable("unexpected value kind in template argument");
+
+  case APValue::Struct: {
+    const CXXRecordDecl *RD = T->getAsCXXRecordDecl();
+    assert(RD && "unexpected type for record value");
+
+    // <expression> ::= tl <type> <braced-expression>* E
+    Out << "tl";
+    mangleType(T);
+    unsigned BaseIndex = 0;
+    for (const CXXBaseSpecifier &BS : RD->bases())
+      mangleValueInTemplateArg(BS.getType(), V.getStructBase(BaseIndex++));
+    for (const FieldDecl *FD : RD->fields()) {
+      if (FD->isUnnamedBitfield())
+        continue;
+      mangleValueInTemplateArg(FD->getType(),
+                               V.getStructField(FD->getFieldIndex()));
+    }
+    Out << 'E';
+    return;
+  }
+
+  case APValue::Union: {
+    const CXXRecordDecl *RD = T->getAsCXXRecordDecl();
+    assert(RD && "unexpected type for union value");
+    const FieldDecl *FD = V.getUnionField();
+
+    if (!FD) {
+      Out << 'L';
+      mangleType(T);
+      Out << 'E';
+      return;
+    }
+
+    // <braced-expression> ::= di <field source-name> <braced-expression>
+    Out << "tl";
+    mangleType(T);
+    Out << "di";
+    mangleSourceName(FD->getIdentifier());
+    mangleValueInTemplateArg(FD->getType(), V.getUnionValue());
+    Out << 'E';
+    return;
+  }
+
+  case APValue::Array: {
+    const ArrayType *AT = Context.getASTContext().getAsArrayType(T);
+    assert(AT && "unexpected type for array value");
+
+    Out << "tl";
+    mangleType(T);
+    // FIXME: Drop trailing elements if and only if they're zeroish.
+    for (unsigned I = 0; I != V.getArraySize(); ++I) {
+      const APValue &Elem = I < V.getArrayInitializedElts()
+                                ? V.getArrayInitializedElt(I)
+                                : V.getArrayFiller();
+      mangleValueInTemplateArg(AT->getElementType(), Elem);
+    }
+    Out << 'E';
+    return;
+  }
+
+  case APValue::Vector: {
+    const VectorType *VT = T->castAs<VectorType>();
+
+    Out << "tl";
+    mangleType(T);
+    for (unsigned I = 0, N = V.getVectorLength(); I != N; ++I)
+      mangleValueInTemplateArg(VT->getElementType(), V.getVectorElt(I));
+    Out << 'E';
+    return;
+  }
+
+  case APValue::Int:
+    mangleIntegerLiteral(T, V.getInt());
+    return;
+
+  case APValue::Float:
+    Out << 'L';
+    mangleType(T);
+    mangleFloat(V.getFloat());
+    Out << 'E';
+    return;
+
+  case APValue::FixedPoint:
+    llvm_unreachable("Fixed point types are disabled for c++");
+    return;
+
+  case APValue::ComplexFloat: {
+    const ComplexType *CT = T->castAs<ComplexType>();
+    Out << "tl";
+    mangleType(T);
+    Out << 'L';
+    mangleType(CT->getElementType());
+    mangleFloat(V.getComplexFloatReal());
+    Out << "EL";
+    mangleType(CT->getElementType());
+    mangleFloat(V.getComplexFloatImag());
+    Out << "EE";
+    return;
+  }
+
+  case APValue::ComplexInt: {
+    const ComplexType *CT = T->castAs<ComplexType>();
+    Out << "tl";
+    mangleType(T);
+    mangleIntegerLiteral(CT->getElementType(), V.getComplexIntReal());
+    mangleIntegerLiteral(CT->getElementType(), V.getComplexIntImag());
+    Out << 'E';
+    return;
+  }
+
+  case APValue::LValue: {
+    // Proposed in https://github.com/itanium-cxx-abi/cxx-abi/issues/47.
+    assert((T->isPointerType() || T->isReferenceType()) &&
+           "unexpected type for LValue template arg");
+
+    if (V.isNullPointer()) {
+      Out << "L";
+      mangleType(T);
+      Out << "0E";
+      return;
+    }
+
+    APValue::LValueBase B = V.getLValueBase();
+    if (!B) {
+      // Non-standard mangling for integer cast to a pointer; this can only
+      // occur as an extension.
+      CharUnits Offset = V.getLValueOffset();
+      if (Offset.isZero()) {
+        // This is reinterpret_cast<T*>(0), not a null pointer. Mangle this as
+        // a cast, because L <type> 0 E means something else.
+        Out << "rc";
+        mangleType(T);
+        Out << "Li0EE";
+      } else {
+        Out << "L";
+        mangleType(T);
+        Out << Offset.getQuantity() << 'E';
+      }
+      return;
+    }
+
+    enum { Base, Offset, Path } Kind;
+    if (!V.hasLValuePath()) {
+      // Mangle as (T*)((char*)&base + N).
+      if (T->isReferenceType()) {
+        Out << "decvP";
+        mangleType(T->getPointeeType());
+      } else {
+        Out << "cv";
+        mangleType(T);
+      }
+      Out << "plcvPcad";
+      Kind = Offset;
+    } else {
+      if (T->isPointerType())
+        Out << "ad";
+      if (!V.getLValuePath().empty() || V.isLValueOnePastTheEnd()) {
+        Out << "so";
+        mangleType(T->getPointeeType());
+        Kind = Path;
+      } else {
+        Kind = Base;
+      }
+    }
+
+    QualType TypeSoFar;
+    if (auto *VD = B.dyn_cast<const ValueDecl*>()) {
+      Out << 'L';
+      mangle(VD);
+      Out << 'E';
+      TypeSoFar = VD->getType();
+    } else if (auto *E = B.dyn_cast<const Expr*>()) {
+      mangleExpression(E);
+      TypeSoFar = E->getType();
+    } else if (auto TI = B.dyn_cast<TypeInfoLValue>()) {
+      Out << "ti";
+      mangleType(QualType(TI.getType(), 0));
+      TypeSoFar = B.getTypeInfoType();
+    } else {
+      // We should never see dynamic allocations here.
+      llvm_unreachable("unexpected lvalue base kind in template argument");
+    }
+
+    switch (Kind) {
+    case Base:
+      break;
+
+    case Offset:
+      Out << 'L';
+      mangleType(Context.getASTContext().getPointerDiffType());
+      mangleNumber(V.getLValueOffset().getQuantity());
+      Out << 'E';
+      break;
+
+    case Path:
+      // <expression> ::= so <referent type> <expr> [<offset number>]
+      //                  <union-selector>* [p] E
+      if (!V.getLValueOffset().isZero())
+        mangleNumber(V.getLValueOffset().getQuantity());
+
+      // We model a past-the-end array pointer as array indexing with index N,
+      // not with the "past the end" flag. Compensate for that.
+      bool OnePastTheEnd = V.isLValueOnePastTheEnd();
+
+      for (APValue::LValuePathEntry E : V.getLValuePath()) {
+        if (auto *AT = TypeSoFar->getAsArrayTypeUnsafe()) {
+          if (auto *CAT = dyn_cast<ConstantArrayType>(AT))
+            OnePastTheEnd |= CAT->getSize() == E.getAsArrayIndex();
+          TypeSoFar = AT->getElementType();
+        } else {
+          const Decl *D = E.getAsBaseOrMember().getPointer();
+          if (auto *FD = dyn_cast<FieldDecl>(D)) {
+            // <union-selector> ::= _ <number>
+            if (FD->getParent()->isUnion()) {
+              Out << '_';
+              if (FD->getFieldIndex())
+                Out << (FD->getFieldIndex() - 1);
+            }
+            TypeSoFar = FD->getType();
+          } else {
+            TypeSoFar =
+                Context.getASTContext().getRecordType(cast<CXXRecordDecl>(D));
+          }
+        }
+      }
+
+      if (OnePastTheEnd)
+        Out << 'p';
+      Out << 'E';
+      break;
+    }
+
+    return;
+  }
+
+  case APValue::MemberPointer:
+    // Proposed in https://github.com/itanium-cxx-abi/cxx-abi/issues/47.
+    if (!V.getMemberPointerDecl()) {
+      Out << 'L';
+      mangleType(T);
+      Out << "0E";
+      return;
+    }
+
+    if (!V.getMemberPointerPath().empty()) {
+      Out << "mc";
+      mangleType(T);
+    }
+    Out << "adL";
+    mangle(V.getMemberPointerDecl());
+    Out << 'E';
+    if (!V.getMemberPointerPath().empty()) {
+      CharUnits Offset =
+          Context.getASTContext().getMemberPointerPathAdjustment(V);
+      if (!Offset.isZero())
+        mangleNumber(Offset.getQuantity());
+      Out << 'E';
+    }
+    return;
   }
 }
 
@@ -5258,8 +5543,8 @@ bool CXXNameMangler::shouldHaveAbiTags(ItaniumMangleContextImpl &C,
 void ItaniumMangleContextImpl::mangleCXXName(GlobalDecl GD,
                                              raw_ostream &Out) {
   const NamedDecl *D = cast<NamedDecl>(GD.getDecl());
-  assert((isa<FunctionDecl>(D) || isa<VarDecl>(D)) &&
-          "Invalid mangleName() call, argument is not a variable or function!");
+  assert((isa<FunctionDecl, VarDecl, TemplateParamObjectDecl>(D)) &&
+         "Invalid mangleName() call, argument is not a variable or function!");
 
   PrettyStackTraceDecl CrashInfo(D, SourceLocation(),
                                  getASTContext().getSourceManager(),

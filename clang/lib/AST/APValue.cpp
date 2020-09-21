@@ -11,10 +11,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/APValue.h"
+#include "Linkage.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/Expr.h"
+#include "clang/AST/ExprCXX.h"
 #include "clang/AST/Type.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -537,11 +539,18 @@ void APValue::profile(llvm::FoldingSetNodeID &ID) const {
     ID.AddInteger(getLValueOffset().getQuantity());
     ID.AddInteger(isNullPointer());
     ID.AddInteger(isLValueOnePastTheEnd());
-    // For uniqueness, we only need to profile the entries corresponding
-    // to union members, but we don't have the type here so we don't know
-    // how to interpret the entries.
-    for (LValuePathEntry E : getLValuePath())
-      E.profile(ID);
+    if (hasLValuePath()) {
+      ID.AddInteger(getLValuePath().size());
+      // For uniqueness, we only need to profile the entries corresponding
+      // to union members, but we don't have the type here so we don't know
+      // how to interpret the entries.
+      for (LValuePathEntry E : getLValuePath())
+        E.profile(ID);
+    } else {
+      // Constant-folded lvalues with no path are never equivalent to lvalues
+      // with paths.
+      ID.AddInteger(-1);
+    }
     return;
 
   case MemberPointer:
@@ -940,4 +949,101 @@ void APValue::MakeMemberPointer(const ValueDecl *Member, bool IsDerivedMember,
   MPD->resizePath(Path.size());
   for (unsigned I = 0; I != Path.size(); ++I)
     MPD->getPath()[I] = Path[I]->getCanonicalDecl();
+}
+
+LinkageInfo LinkageComputer::getLVForValue(const APValue &V,
+                                           LVComputationKind computation) {
+  LinkageInfo LV = LinkageInfo::external();
+
+  auto MergeLV = [&](LinkageInfo MergeLV) {
+    LV.merge(MergeLV);
+    return LV.getLinkage() == InternalLinkage;
+  };
+  auto Merge = [&](const APValue &V) {
+    return MergeLV(getLVForValue(V, computation));
+  };
+
+  switch (V.getKind()) {
+  case APValue::None:
+  case APValue::Indeterminate:
+  case APValue::Int:
+  case APValue::Float:
+  case APValue::FixedPoint:
+  case APValue::ComplexInt:
+  case APValue::ComplexFloat:
+  case APValue::Vector:
+    break;
+
+  case APValue::AddrLabelDiff:
+    // Even for an inline function, it's not reasonable to treat a difference
+    // between the addresses of labels as an external value.
+    return LinkageInfo::internal();
+
+  case APValue::Struct: {
+    for (unsigned I = 0, N = V.getStructNumBases(); I != N; ++I)
+      if (Merge(V.getStructBase(I)))
+        break;
+    for (unsigned I = 0, N = V.getStructNumFields(); I != N; ++I)
+      if (Merge(V.getStructField(I)))
+        break;
+    break;
+  }
+
+  case APValue::Union:
+    if (const auto *FD = V.getUnionField())
+      Merge(V.getUnionValue());
+    break;
+
+  case APValue::Array: {
+    for (unsigned I = 0, N = V.getArrayInitializedElts(); I != N; ++I)
+      if (Merge(V.getArrayInitializedElt(I)))
+        break;
+    if (V.hasArrayFiller())
+      Merge(V.getArrayFiller());
+    break;
+  }
+
+  case APValue::LValue: {
+    if (!V.getLValueBase()) {
+      // Null or absolute address: this is external.
+    } else if (const auto *VD =
+                   V.getLValueBase().dyn_cast<const ValueDecl *>()) {
+      if (VD && MergeLV(getLVForDecl(VD, computation)))
+        break;
+    } else if (const auto TI = V.getLValueBase().dyn_cast<TypeInfoLValue>()) {
+      // FIXME: Claim that typeinfo(T) has the same linkage as T. This isn't
+      // correct across all ABIs, but for now it shouldn't matter as such
+      // values aren't permitted within template arguments.
+      if (MergeLV(getLVForType(*TI.getType(), computation)))
+        break;
+    } else if (const Expr *E = V.getLValueBase().dyn_cast<const Expr *>()) {
+      // Almost all expression bases are internal. The exception is
+      // lifetime-extended temporaries.
+      // FIXME: These should be modeled as having the
+      // LifetimeExtendedTemporaryDecl itself as the base.
+      auto *MTE = dyn_cast<MaterializeTemporaryExpr>(E);
+      if (!MTE || MTE->getStorageDuration() == SD_FullExpression)
+        return LinkageInfo::internal();
+      if (MergeLV(getLVForDecl(MTE->getExtendingDecl(), computation)))
+        break;
+    } else {
+      assert(V.getLValueBase().is<DynamicAllocLValue>() &&
+             "unexpected LValueBase kind");
+      return LinkageInfo::internal();
+    }
+    // The lvalue path doesn't matter: pointers to all subobjects always have
+    // the same visibility as pointers to the complete object.
+    break;
+  }
+
+  case APValue::MemberPointer:
+    if (const NamedDecl *D = V.getMemberPointerDecl())
+      MergeLV(getLVForDecl(D, computation));
+    // Note that we could have a base-to-derived conversion here to a member of
+    // a derived class with less linkage/visibility. That's covered by the
+    // linkage and visibility of the value's type.
+    break;
+  }
+
+  return LV;
 }
