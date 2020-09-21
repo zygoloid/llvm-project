@@ -10964,6 +10964,27 @@ ASTContext::getMSGuidDecl(MSGuidDecl::Parts Parts) const {
   return New;
 }
 
+TemplateParamObjectDecl *
+ASTContext::getTemplateParamObjectDecl(QualType T, const APValue &V) const {
+  assert(T->isRecordType() && "template param object of unexpected type");
+
+  // C++ [temp.param]p8:
+  //   [...] a static storage duration object of type 'const T' [...]
+  T.addConst();
+
+  llvm::FoldingSetNodeID ID;
+  TemplateParamObjectDecl::Profile(ID, T, V);
+
+  void *InsertPos;
+  if (TemplateParamObjectDecl *Existing =
+          TemplateParamObjectDecls.FindNodeOrInsertPos(ID, InsertPos))
+    return Existing;
+
+  TemplateParamObjectDecl *New = TemplateParamObjectDecl::Create(*this, T, V);
+  TemplateParamObjectDecls.InsertNode(New, InsertPos);
+  return New;
+}
+
 bool ASTContext::AtomicUsesUnsupportedLibcall(const AtomicExpr *E) const {
   const llvm::Triple &T = getTargetInfo().getTriple();
   if (!T.isOSDarwin())

@@ -3226,7 +3226,7 @@ public:
   static bool classofKind(Kind K) { return K == VarTemplate; }
 };
 
-// \brief Declaration of a C++2a concept.
+/// Declaration of a C++2a concept.
 class ConceptDecl : public TemplateDecl, public Mergeable<ConceptDecl> {
 protected:
   Expr *ConstraintExpr;
@@ -3262,6 +3262,60 @@ public:
   friend class ASTReader;
   friend class ASTDeclReader;
   friend class ASTDeclWriter;
+};
+
+/// A template parameter object.
+///
+/// Template parameter objects represent values of class type used as template
+/// arguments. There is one template parameter object for each such distinct
+/// value used as a template argument across the program.
+///
+/// \code
+/// struct A { int x, y; };
+/// template<A> struct S;
+/// S<A{1, 2}> s1;
+/// S<A{1, 2}> s2; // same type, argument is same TemplateParamObjectDecl.
+/// \endcode
+class TemplateParamObjectDecl : public ValueDecl,
+                                public Mergeable<TemplateParamObjectDecl>,
+                                public llvm::FoldingSetNode {
+private:
+  /// The value of this template parameter object.
+  APValue Value;
+
+  TemplateParamObjectDecl(DeclContext *DC, QualType T, const APValue &V)
+      : ValueDecl(TemplateParamObject, DC, SourceLocation(), DeclarationName(),
+                  T),
+        Value(V) {}
+
+  static TemplateParamObjectDecl *Create(const ASTContext &C, QualType T,
+                                         const APValue &V);
+  static TemplateParamObjectDecl *CreateDeserialized(ASTContext &C,
+                                                     unsigned ID);
+
+  /// Only ASTContext::getTemplateParamObjectDecl and deserialization
+  /// create these.
+  friend class ASTContext;
+  friend class ASTReader;
+  friend class ASTDeclReader;
+
+public:
+  /// Print this template parameter object in a human-readable format.
+  void printName(llvm::raw_ostream &OS) const override;
+
+  const APValue &getValue() const { return Value; }
+
+  static void Profile(llvm::FoldingSetNodeID &ID, QualType T,
+                      const APValue &V) {
+    ID.AddPointer(T.getCanonicalType().getAsOpaquePtr());
+    V.profile(ID);
+  }
+  void Profile(llvm::FoldingSetNodeID &ID) {
+    Profile(ID, getType(), getValue());
+  }
+
+  static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+  static bool classofKind(Kind K) { return K == TemplateParamObject; }
 };
 
 inline NamedDecl *getAsNamedDecl(TemplateParameter P) {

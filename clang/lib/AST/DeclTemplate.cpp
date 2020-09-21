@@ -1431,3 +1431,23 @@ void TypeConstraint::print(llvm::raw_ostream &OS, PrintingPolicy Policy) const {
     OS << ">";
   }
 }
+
+TemplateParamObjectDecl *TemplateParamObjectDecl::Create(const ASTContext &C,
+                                                         QualType T,
+                                                         const APValue &V) {
+  DeclContext *DC = C.getTranslationUnitDecl();
+  return new (C, DC) TemplateParamObjectDecl(DC, T, V);
+}
+
+TemplateParamObjectDecl *
+TemplateParamObjectDecl::CreateDeserialized(ASTContext &C, unsigned ID) {
+  return new (C, ID) TemplateParamObjectDecl(nullptr, QualType(), APValue());
+}
+
+void TemplateParamObjectDecl::printName(llvm::raw_ostream &OS) const {
+  OS << "<template param ";
+  const ASTContext &Ctx = getASTContext();
+  getType().getUnqualifiedType().print(OS, Ctx.getPrintingPolicy());
+  getValue().printPretty(OS, Ctx, getType());
+  OS << ">";
+}
