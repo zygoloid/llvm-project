@@ -5141,6 +5141,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back(A->getValue());
   }
 
+  if (Args.hasFlag(options::OPT_fimplicit_constexpr,
+                   options::OPT_fno_implicit_constexpr, false))
+    CmdArgs.push_back("-fimplicit-constexpr");
+
   if (Args.hasArg(options::OPT_fexperimental_new_constant_interpreter))
     CmdArgs.push_back("-fexperimental-new-constant-interpreter");
 

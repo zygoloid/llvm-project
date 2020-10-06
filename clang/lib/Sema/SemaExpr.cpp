@@ -16631,7 +16631,8 @@ static OdrUseContext isOdrUseContext(Sema &SemaRef) {
 }
 
 static bool isImplicitlyDefinableConstexprFunction(FunctionDecl *Func) {
-  if (!Func->isConstexpr())
+  if (!Func->isConstexpr() &&
+      !Func->getASTContext().getLangOpts().ImplicitConstexpr)
     return false;
 
   if (Func->isImplicitlyInstantiable() || !Func->isUserProvided())
@@ -16799,13 +16800,13 @@ void Sema::MarkFunctionReferenced(SourceLocation Loc, FunctionDecl *Func,
         }
 
         if (FirstInstantiation || TSK != TSK_ImplicitInstantiation ||
-            Func->isConstexpr()) {
+            NeededForConstantEvaluation) {
           if (isa<CXXRecordDecl>(Func->getDeclContext()) &&
               cast<CXXRecordDecl>(Func->getDeclContext())->isLocalClass() &&
               CodeSynthesisContexts.size())
             PendingLocalImplicitInstantiations.push_back(
                 std::make_pair(Func, PointOfInstantiation));
-          else if (Func->isConstexpr())
+          else if (NeededForConstantEvaluation)
             // Do not defer instantiations of constexpr functions, to avoid the
             // expression evaluator needing to call back into Sema if it sees a
             // call to such a function.

@@ -2183,6 +2183,15 @@ static bool CheckLiteralType(EvalInfo &Info, const Expr *E,
   if (!E->isRValue() || E->getType()->isLiteralType(Info.Ctx))
     return true;
 
+  // Under -fimplicit-constexpr, we don't need literal types. But we still
+  // can't really cope with virtual base classes.
+  if (Info.getLangOpts().ImplicitConstexpr && Info.InConstantContext) {
+    QualType T = E->getType();
+    auto *RD = T->getAsCXXRecordDecl();
+    if (!RD || !RD->getNumVBases())
+      return true;
+  }
+
   // C++1y: A constant initializer for an object o [...] may also invoke
   // constexpr constructors for o and its subobjects even if those objects
   // are of non-literal class types.
@@ -5206,6 +5215,13 @@ static EvalStmtResult EvaluateStmt(StmtResult &Result, EvalInfo &Info,
   }
 }
 
+/// Determine whether a given funciton is sufficiently constexpr to be usable
+/// in constant expressions.
+static bool IsSufficientlyConstexpr(EvalInfo &Info, const FunctionDecl *FD) {
+  return FD->isConstexpr() ||
+         (Info.InConstantContext && Info.getLangOpts().ImplicitConstexpr);
+}
+
 /// CheckTrivialDefaultConstructor - Check whether a constructor is a trivial
 /// default constructor. If so, we'll fold it whether or not it's marked as
 /// constexpr. If it is marked as constexpr, we will never implicitly define it,
@@ -5219,7 +5235,7 @@ static bool CheckTrivialDefaultConstructor(EvalInfo &Info, SourceLocation Loc,
   // Value-initialization does not call a trivial default constructor, so such a
   // call is a core constant expression whether or not the constructor is
   // constexpr.
-  if (!CD->isConstexpr() && !IsValueInitialization) {
+  if (!IsSufficientlyConstexpr(Info, CD) && !IsValueInitialization) {
     if (Info.getLangOpts().CPlusPlus11) {
       // FIXME: If DiagDecl is an implicitly-declared special member function,
       // we should be much more explicit about why it's not constexpr.
@@ -5242,7 +5258,7 @@ static bool CheckConstexprFunction(EvalInfo &Info, SourceLocation CallLoc,
   // Potential constant expressions can contain calls to declared, but not yet
   // defined, constexpr functions.
   if (Info.checkingPotentialConstantExpression() && !Definition &&
-      Declaration->isConstexpr())
+      IsSufficientlyConstexpr(Info, Declaration))
     return false;
 
   // Bail out if the function declaration itself is invalid.  We will
@@ -5273,7 +5289,7 @@ static bool CheckConstexprFunction(EvalInfo &Info, SourceLocation CallLoc,
   }
 
   // Can we evaluate this function call?
-  if (Definition && Definition->isConstexpr() && Body)
+  if (Definition && IsSufficientlyConstexpr(Info, Definition) && Body)
     return true;
 
   if (Info.getLangOpts().CPlusPlus11) {
@@ -5284,7 +5300,7 @@ static bool CheckConstexprFunction(EvalInfo &Info, SourceLocation CallLoc,
     auto *CD = dyn_cast<CXXConstructorDecl>(DiagDecl);
     if (CD && CD->isInheritingConstructor()) {
       auto *Inherited = CD->getInheritedConstructor().getConstructor();
-      if (!Inherited->isConstexpr())
+      if (!IsSufficientlyConstexpr(Info, Inherited))
         DiagDecl = CD = Inherited;
     }
 
