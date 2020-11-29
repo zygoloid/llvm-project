@@ -231,6 +231,11 @@ struct AccessTarget : public AccessedEntity {
     return namingClass->getCanonicalDecl();
   }
 
+  void resolveTarget(NamedDecl *ND) {
+    setTargetDecl(ND);
+    DeclaringClass = FindDeclaringClass(ND);
+  }
+
 private:
   void initialize() {
     HasInstanceContext = (isMemberAccess() &&
@@ -866,6 +871,37 @@ static AccessResult HasAccess(Sema &S,
   llvm_unreachable("impossible friendship kind");
 }
 
+static bool declaresSameType(ASTContext &Ctx, NamedDecl *D1, NamedDecl *D2) {
+  auto *T1 = dyn_cast<TypeDecl>(D1);
+  auto *T2 = dyn_cast<TypeDecl>(D2);
+  return T1 && T2 &&
+         Ctx.hasSameType(Ctx.getTypeDeclType(T1), Ctx.getTypeDeclType(T2));
+}
+
+/// Find the most accessible redeclaration of the target in RD. Returns
+/// InheritedAccess if there is no such declaration.
+static std::pair<NamedDecl *, AccessSpecifier>
+FindBestCorrespondingMember(Sema &S, const CXXRecordDecl *RD,
+                            const AccessTarget &Target,
+                            AccessSpecifier InheritedAccess) {
+  auto Lookup = RD->lookup(Target.getTargetDecl()->getDeclName());
+  if (Lookup.empty())
+    return {nullptr, InheritedAccess};
+
+  std::pair<NamedDecl *, AccessSpecifier> Best = {nullptr, AS_none};
+  for (NamedDecl *Corresponding : Lookup) {
+    // FIXME: declaresSameEntity doesn't correctly determine whether
+    // two type declarations declare the same type.
+    if ((!Best.first || Best.second > Corresponding->getAccess()) &&
+        (declaresSameEntity(Corresponding->getUnderlyingDecl(),
+                            Target.getTargetDecl()) ||
+         declaresSameType(S.Context, Corresponding->getUnderlyingDecl(),
+                          Target.getTargetDecl())))
+      Best = {Corresponding, Corresponding->getAccess()};
+  }
+  return Best;
+}
+
 /// Finds the best path from the naming class to the declaring class,
 /// taking friend declarations into account.
 ///
@@ -919,8 +955,16 @@ static AccessResult HasAccess(Sema &S,
 ///
 /// B is an accessible base of N at R iff ACAB(1) = public.
 ///
+/// Note that we don't actually know which member was named here, because class
+/// scope name lookup can find different sets of declarations of the same
+/// entities in different classes. So we also redo the name lookup for the
+/// member in each class in case a using-declaration or typedef changed its
+/// access along some path.
+///
+/// \param Target the access target, updated to the corresponding member found
+///        along the best path.
 /// \param FinalAccess the access of the "final step", or AS_public if
-///   there is no final step.
+///        there is no final step.
 /// \return null if friendship is dependent
 static CXXBasePath *FindBestPath(Sema &S,
                                  const EffectiveContext &EC,
@@ -938,6 +982,7 @@ static CXXBasePath *FindBestPath(Sema &S,
   (void) isDerived;
 
   CXXBasePath *BestPath = nullptr;
+  NamedDecl *BestTarget = nullptr;
 
   assert(FinalAccess != AS_none && "forbidden access after declaring class");
 
@@ -947,27 +992,46 @@ static CXXBasePath *FindBestPath(Sema &S,
   for (CXXBasePaths::paths_iterator PI = Paths.begin(), PE = Paths.end();
          PI != PE; ++PI) {
     AccessTarget::SavedInstanceContext _ = Target.saveInstanceContext();
+    NamedDecl *TargetDecl = Target.getTargetDecl();
 
     // Walk through the path backwards.
     AccessSpecifier PathAccess = FinalAccess;
-    CXXBasePath::iterator I = PI->end(), E = PI->begin();
+    CXXBasePath::iterator I = PI->end(), E = PI->begin(), NewEnd = PI->end();
     while (I != E) {
       --I;
-
-      assert(PathAccess != AS_none);
 
       // If the declaration is a private member of a base class, there
       // is no level of friendship in derived classes that can make it
       // accessible.
-      if (PathAccess == AS_private) {
+      if (PathAccess == AS_private)
         PathAccess = AS_none;
-        break;
-      }
 
       const CXXRecordDecl *NC = I->Class->getCanonicalDecl();
 
       AccessSpecifier BaseAccess = I->Base->getAccessSpecifier();
       PathAccess = std::max(PathAccess, BaseAccess);
+
+      // If the target is shadowed in this class, the access is the best access
+      // of the corresponding declaration here, if any. Note that in an
+      // unambiguous lookup, every path must end in the same set of lookup
+      // results, so if we don't find a corresponding member here, we must find
+      // one later along the path.
+      if (Target.isMemberAccess()) {
+        auto MemberAndAccess =
+            FindBestCorrespondingMember(S, NC, Target, PathAccess);
+        PathAccess = MemberAndAccess.second;
+        if (MemberAndAccess.first) {
+          TargetDecl = MemberAndAccess.first;
+          NewEnd = I;
+        }
+      }
+
+      if (PathAccess == AS_none) {
+        if (Target.isMemberAccess())
+          continue;
+        else
+          break;
+      }
 
       switch (HasAccess(S, EC, NC, PathAccess, Target)) {
       case AR_inaccessible: break;
@@ -984,15 +1048,20 @@ static CXXBasePath *FindBestPath(Sema &S,
       }
     }
 
-    // Note that we modify the path's Access field to the
-    // friend-modified access.
+    // Note that we modify the path's Access field to the friend-modified,
+    // target-specific access to the best corresponding member.
     if (BestPath == nullptr || PathAccess < BestPath->Access) {
       BestPath = &*PI;
       BestPath->Access = PathAccess;
+      BestPath->erase(NewEnd, BestPath->end());
+      BestTarget = TargetDecl;
 
       // Short-circuit if we found a public path.
-      if (BestPath->Access == AS_public)
+      if (BestPath->Access == AS_public) {
+        if (Target.isMemberAccess())
+          Target.resolveTarget(BestTarget);
         return BestPath;
+      }
     }
 
   Next: ;
@@ -1006,6 +1075,8 @@ static CXXBasePath *FindBestPath(Sema &S,
   if (AnyDependent)
     return nullptr;
 
+  if (Target.isMemberAccess())
+    Target.resolveTarget(BestTarget);
   return BestPath;
 }
 
@@ -1158,8 +1229,11 @@ static void DiagnoseAccessPath(Sema &S,
   // The natural access so far.
   AccessSpecifier accessSoFar = AS_public;
 
-  // Check whether we have special rights to the declaring class.
-  if (entity.isMemberAccess()) {
+  auto CheckTargetDecl = [&] {
+    // Check whether we have special rights to the declaring class.
+    if (!entity.isMemberAccess())
+      return false;
+
     NamedDecl *D = entity.getTargetDecl();
     accessSoFar = D->getAccess();
     const CXXRecordDecl *declaringClass = entity.getDeclaringClass();
@@ -1174,18 +1248,30 @@ static void DiagnoseAccessPath(Sema &S,
 
     case AR_inaccessible:
       if (accessSoFar == AS_private ||
-          declaringClass == entity.getEffectiveNamingClass())
-        return diagnoseBadDirectAccess(S, EC, entity);
+          declaringClass == entity.getEffectiveNamingClass()) {
+        diagnoseBadDirectAccess(S, EC, entity);
+        return true;
+      }
       break;
 
     case AR_dependent:
       llvm_unreachable("cannot diagnose dependent access");
     }
-  }
+    return false;
+  };
+
+  if (CheckTargetDecl())
+    return;
+
+  const CXXRecordDecl *origDeclaringClass = entity.getDeclaringClass();
 
   CXXBasePaths paths;
   CXXBasePath &path = *FindBestPath(S, EC, entity, accessSoFar, paths);
   assert(path.Access != AS_public);
+
+  // We might have found a more specific declaring class along the best path.
+  if (entity.getDeclaringClass() != origDeclaringClass && CheckTargetDecl())
+    return;
 
   CXXBasePath::iterator i = path.end(), e = path.begin();
   CXXBasePath::iterator constrainingBase = i;
@@ -1212,7 +1298,7 @@ static void DiagnoseAccessPath(Sema &S,
     case AR_accessible:
       accessSoFar = AS_public;
       entity.suppressInstanceContext();
-      constrainingBase = nullptr;
+      constrainingBase = path.end();
       break;
     case AR_dependent:
       llvm_unreachable("cannot diagnose dependent access");

@@ -825,8 +825,8 @@ namespace dr470 { // dr470: yes
 }
 
 namespace dr471 { // dr471: yes
-  struct A { int n; };
-  struct B : private virtual A {};
+  struct A { int n; }; // expected-note {{here}}
+  struct B : private virtual A {}; // expected-note {{constrained by private inheritance}}
   struct C : protected virtual A {};
   struct D : B, C { int f() { return n; } };
   struct E : private virtual A {
@@ -835,7 +835,7 @@ namespace dr471 { // dr471: yes
   struct F : E, B { int f() { return n; } };
   struct G : virtual A {
   private:
-    using A::n; // expected-note {{here}}
+    using A::n;
   };
   struct H : B, G { int f() { return n; } }; // expected-error {{private}}
 }

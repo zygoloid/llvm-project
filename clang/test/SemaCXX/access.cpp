@@ -219,22 +219,22 @@ namespace OverloadedMemberFunctionPointer {
 
 namespace MultiplePathsToSameMember {
   namespace Static {
-    struct A { static int a; };
-    struct B : private A {};
+    struct A { static int a; }; // expected-note {{declared here}}
+    struct B : private A {}; // expected-note {{constrained by private inheritance here}}
     struct C : public A { private: using A::a; };  // expected-note {{declared private here}}
     struct D1 : B, C {};
     struct D2 : C, B {};
-    int k1 = D1::a; // FIXME: This is invalid.
+    int k1 = D1::a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::Static::A'}}
     int k2 = D2::a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::Static::C'}}
   }
 
   namespace NonStatic {
-    struct A { int a; };
-    struct B : private virtual A {};
-    struct C : public virtual A { private: using A::a; }; // expected-note 2{{declared private here}}
+    struct A { int a; }; // expected-note {{declared here}}
+    struct B : private virtual A {}; // expected-note {{constrained by private inheritance here}}
+    struct C : public virtual A { private: using A::a; }; // expected-note {{declared private here}}
     struct D1 : B, C {};
     struct D2 : C, B {};
-    int k1 = D1().a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::NonStatic::C'}}
+    int k1 = D1().a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::NonStatic::A'}}
     int k2 = D2().a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::NonStatic::C'}}
   }
 }

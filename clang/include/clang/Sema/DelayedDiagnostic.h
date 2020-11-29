@@ -61,8 +61,9 @@ public:
                  MemberNonce _, CXXRecordDecl *NamingClass,
                  DeclAccessPair FoundDecl, QualType BaseObjectType)
       : Access(FoundDecl.getAccess()), IsMember(true),
-        Target(FoundDecl.getDecl()), NamingClass(NamingClass),
-        BaseObjectType(BaseObjectType), Diag(0, Allocator) {}
+        Target(FoundDecl.getDecl()->getUnderlyingDecl()),
+        NamingClass(NamingClass), BaseObjectType(BaseObjectType),
+        Diag(0, Allocator) {}
 
   AccessedEntity(PartialDiagnostic::DiagStorageAllocator &Allocator,
                  BaseNonce _, CXXRecordDecl *BaseClass,
@@ -79,6 +80,7 @@ public:
   // These apply to member decls...
   NamedDecl *getTargetDecl() const { return Target; }
   CXXRecordDecl *getNamingClass() const { return NamingClass; }
+  void setTargetDecl(NamedDecl *ND) { Target = ND; }
 
   // ...and these apply to hierarchy conversions.
   CXXRecordDecl *getBaseClass() const {

@@ -484,7 +484,6 @@ namespace dr39 { // dr39: no
     };
     struct C : A, B, virtual V {} c; // expected-warning {{direct base 'dr39::example2::A' is inaccessible due to ambiguity:\n    struct dr39::example2::C -> struct dr39::example2::A\n    struct dr39::example2::C -> struct dr39::example2::B -> struct dr39::example2::A}}
     int &x = c.x(0); // expected-error {{found in multiple base classes}}
-    // FIXME: This is valid, because we find the same static data member either way.
     int &y = c.y(0); // expected-error {{found in multiple base classes}}
     int &z = c.z(0);
   }
@@ -515,6 +514,36 @@ namespace dr39 { // dr39: no
 #else
     decltype(D::n) n;
 #endif
+  }
+
+  namespace type {
+    struct A {
+      typedef int I;
+      typedef int J; // expected-note {{found}}
+    };
+    struct B {
+      typedef type::A A;
+      typedef int I;
+      typedef const int J; // expected-note {{found}}
+    };
+    struct C : A, B {};
+    C::A ca;
+    C::I i;
+    C::J j; // expected-error {{found in multiple base classes}}
+  }
+
+  namespace resolve_overload_before_checking_subobject_ambiguity {
+    struct A {
+      void f();
+      static void f(int);
+    };
+    struct B : A {};
+    struct C : A {};
+    struct D : B, C {};
+    void f(D d) {
+      d.f(0); // OK
+      d.f(); // expected-error {{ambiguous conversion}}
+    }
   }
 }
 

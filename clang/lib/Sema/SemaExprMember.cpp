@@ -1059,6 +1059,17 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
     return MemExpr;
   }
 
+  // FIXME: For a field, we need to resolve the name to a declaration in a
+  // particular base class right now, so that we use the correct FoundDecl. For
+  // example:
+  //   struct A { int x; };
+  //   struct B : private A { using A::x; };
+  //   struct C : public A { using A::x; };
+  //   struct D : private B, C {};
+  //   int k = D().x;
+  // ... should build a member access where the FoundDecl is C::x, not B::x.
+  // If we pick B::x we'll attempt to convert D to its private base class B.
+
   assert(R.isSingleResult());
   DeclAccessPair FoundDecl = R.begin().getPair();
   NamedDecl *MemberDecl = R.getFoundDecl();
