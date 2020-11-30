@@ -218,23 +218,103 @@ namespace OverloadedMemberFunctionPointer {
 }
 
 namespace MultiplePathsToSameMember {
-  namespace Static {
-    struct A { static int a; }; // expected-note {{declared here}}
-    struct B : private A {}; // expected-note {{constrained by private inheritance here}}
-    struct C : public A { private: using A::a; };  // expected-note {{declared private here}}
-    struct D1 : B, C {};
-    struct D2 : C, B {};
-    int k1 = D1::a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::Static::A'}}
-    int k2 = D2::a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::Static::C'}}
+  namespace NonVirtual {
+    struct A {
+      static int a; // expected-note {{declared here}}
+      using T = int; // expected-note {{declared here}}
+    };
+    struct B : private A {}; // expected-note 2{{constrained by private inheritance here}}
+    struct C : public A {
+    private:
+      using A::a; // expected-note {{declared private here}}
+      using T = int; // expected-note {{declared private here}}
+    };
+    struct D : public A {};
+    struct E : public A {
+    public:
+      using A::a;
+      using T = int;
+    };
+
+    struct X1 : B, C {};
+    struct X2 : C, B {};
+    struct X3 : D, C {};
+    struct X4 : C, D {};
+    struct X5 : B, E {};
+    struct X6 : E, B {};
+
+    int k1 = X1::a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::NonVirtual::A'}}
+    int k2 = X2::a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::NonVirtual::C'}}
+    int k3 = X3::a;
+    int k4 = X4::a;
+    int k5 = X5::a;
+    int k6 = X6::a;
+    X1::T u1; // expected-error {{'T' is a private member of 'MultiplePathsToSameMember::NonVirtual::A'}}
+    X2::T u2; // expected-error {{'T' is a private member of 'MultiplePathsToSameMember::NonVirtual::C'}}
+    X3::T u3;
+    X4::T u4;
+    X5::T u5;
+    X6::T u6;
   }
 
-  namespace NonStatic {
-    struct A { int a; }; // expected-note {{declared here}}
+  namespace Virtual {
+    struct A {
+      int a; // expected-note {{declared here}}
+      using T = int;
+    };
     struct B : private virtual A {}; // expected-note {{constrained by private inheritance here}}
-    struct C : public virtual A { private: using A::a; }; // expected-note {{declared private here}}
-    struct D1 : B, C {};
-    struct D2 : C, B {};
-    int k1 = D1().a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::NonStatic::A'}}
-    int k2 = D2().a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::NonStatic::C'}}
+    struct C : public virtual A {
+    private:
+      using A::a; // expected-note {{declared private here}}
+      using T = int; // expected-note 4{{declared private here}}
+    };
+    struct D : public virtual A {};
+    struct E : public virtual A {
+    public:
+      using A::a;
+      using T = int;
+    };
+
+    struct X1 : B, C {};
+    struct X2 : C, B {};
+    struct X3 : D, C {};
+    struct X4 : C, D {};
+    struct X5 : B, E {};
+    struct X6 : E, B {};
+
+    int k1 = X1().a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::Virtual::A'}}
+    int k2 = X2().a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::Virtual::C'}}
+    // FIXME: These are ill-formed. The public members are hidden by the
+    // private ones.
+    int k3 = X3().a;
+    int k4 = X4().a;
+    int k5 = X5().a;
+    int k6 = X6().a;
+    X1::T u1; // expected-error {{'T' is a private member of 'MultiplePathsToSameMember::Virtual::C'}}
+    X2::T u2; // expected-error {{'T' is a private member of 'MultiplePathsToSameMember::Virtual::C'}}
+    // Public declarations in vbase A (reached via D) are hidden by private
+    // declarations in C.
+    X3::T u3; // expected-error {{'T' is a private member of 'MultiplePathsToSameMember::Virtual::C'}}
+    X4::T u4; // expected-error {{'T' is a private member of 'MultiplePathsToSameMember::Virtual::C'}}
+    X5::T u5;
+    X6::T u6;
+  }
+
+  namespace Unrelated {
+    struct A { using T = int; };
+    class B { using T = int; };
+    struct C { using T = int; }; // expected-note 3{{declared here}}
+    struct D1 : A, B {};
+    struct D2 : B, A {};
+    struct D3 : private C, B {}; // expected-note {{constrained by}}
+    struct D4 : B, private C {}; // expected-note {{constrained by}}
+    struct D5 : B, private C {}; // expected-note {{constrained by}}
+
+    using T = int;
+    using T = D1::T;
+    using T = D2::T;
+    using T = D3::T; // expected-error {{private}}
+    using T = D4::T; // expected-error {{private}}
+    using T = D5::T; // expected-error {{private}}
   }
 }

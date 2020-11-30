@@ -878,26 +878,22 @@ static bool declaresSameType(ASTContext &Ctx, NamedDecl *D1, NamedDecl *D2) {
          Ctx.hasSameType(Ctx.getTypeDeclType(T1), Ctx.getTypeDeclType(T2));
 }
 
-/// Find the most accessible redeclaration of the target in RD. Returns
-/// InheritedAccess if there is no such declaration.
-static std::pair<NamedDecl *, AccessSpecifier>
+/// Find the most accessible redeclaration of the target in RD.
+static NamedDecl *
 FindBestCorrespondingMember(Sema &S, const CXXRecordDecl *RD,
-                            const AccessTarget &Target,
-                            AccessSpecifier InheritedAccess) {
-  auto Lookup = RD->lookup(Target.getTargetDecl()->getDeclName());
-  if (Lookup.empty())
-    return {nullptr, InheritedAccess};
-
-  std::pair<NamedDecl *, AccessSpecifier> Best = {nullptr, AS_none};
-  for (NamedDecl *Corresponding : Lookup) {
+                            const AccessTarget &Target) {
+  NamedDecl *Best = nullptr;
+  for (NamedDecl *Corresponding :
+       RD->lookup(Target.getTargetDecl()->getDeclName())) {
+    // FIXME: Do we ever need to skip lookup results in the wrong IDNS?
     // FIXME: declaresSameEntity doesn't correctly determine whether
     // two type declarations declare the same type.
-    if ((!Best.first || Best.second > Corresponding->getAccess()) &&
+    if ((!Best || Best->getAccess() > Corresponding->getAccess()) &&
         (declaresSameEntity(Corresponding->getUnderlyingDecl(),
                             Target.getTargetDecl()) ||
          declaresSameType(S.Context, Corresponding->getUnderlyingDecl(),
                           Target.getTargetDecl())))
-      Best = {Corresponding, Corresponding->getAccess()};
+      Best = Corresponding;
   }
   return Best;
 }
@@ -973,13 +969,36 @@ static CXXBasePath *FindBestPath(Sema &S,
                                  CXXBasePaths &Paths) {
   // Derive the paths to the desired base.
   const CXXRecordDecl *Derived = Target.getNamingClass();
-  const CXXRecordDecl *Base = Target.getDeclaringClass();
 
-  // FIXME: fail correctly when there are dependent paths.
-  bool isDerived = Derived->isDerivedFrom(const_cast<CXXRecordDecl*>(Base),
-                                          Paths);
-  assert(isDerived && "derived class not actually derived from base");
-  (void) isDerived;
+  // We need to re-do the lookup to find all the right paths if the target is a
+  // type name. There could be more matching declarations that are not in
+  // classes derived from the declaring class of the underlying declaration.
+  bool RedoLookup = false;
+  if (Target.isMemberAccess() &&
+      isa<TypeDecl>(Target.getTargetDecl()->getUnderlyingDecl())) {
+    auto DeclaresTypeWithTargetName = [&](const CXXBaseSpecifier *Specifier,
+                                          CXXBasePath &Path) {
+      for (NamedDecl *ND :
+           Specifier->getType()->getAsCXXRecordDecl()->lookup(
+               Target.getTargetDecl()->getDeclName())) {
+        if (!isa<TypeDecl>(ND->getUnderlyingDecl()))
+          continue;
+        // FIXME: Do we need to use the same IDNS as the original lookup to
+        // avoid considering too many paths?
+        if (ND->isInIdentifierNamespace(Decl::IDNS_Type))
+          return true;
+      }
+      return false;
+    };
+    Derived->lookupInBases(DeclaresTypeWithTargetName, Paths);
+    RedoLookup = true;
+  } else {
+    const CXXRecordDecl *Base = Target.getDeclaringClass();
+    bool isDerived = Derived->isDerivedFrom(const_cast<CXXRecordDecl*>(Base),
+                                            Paths);
+    assert(isDerived && "derived class not actually derived from base");
+    (void) isDerived;
+  }
 
   CXXBasePath *BestPath = nullptr;
   NamedDecl *BestTarget = nullptr;
@@ -993,9 +1012,18 @@ static CXXBasePath *FindBestPath(Sema &S,
          PI != PE; ++PI) {
     AccessTarget::SavedInstanceContext _ = Target.saveInstanceContext();
     NamedDecl *TargetDecl = Target.getTargetDecl();
+    AccessSpecifier PathAccess = FinalAccess;
+
+    if (RedoLookup) {
+      const CXXRecordDecl *Base =
+          PI->back().Base->getType()->getAsCXXRecordDecl();
+      if (Base != Target.getDeclaringClass()) {
+        TargetDecl = FindBestCorrespondingMember(S, Base, Target);
+        PathAccess = TargetDecl->getAccess();
+      }
+    }
 
     // Walk through the path backwards.
-    AccessSpecifier PathAccess = FinalAccess;
     CXXBasePath::iterator I = PI->end(), E = PI->begin(), NewEnd = PI->end();
     while (I != E) {
       --I;
@@ -1017,11 +1045,10 @@ static CXXBasePath *FindBestPath(Sema &S,
       // results, so if we don't find a corresponding member here, we must find
       // one later along the path.
       if (Target.isMemberAccess()) {
-        auto MemberAndAccess =
-            FindBestCorrespondingMember(S, NC, Target, PathAccess);
-        PathAccess = MemberAndAccess.second;
-        if (MemberAndAccess.first) {
-          TargetDecl = MemberAndAccess.first;
+        if (NamedDecl *BestMember =
+                FindBestCorrespondingMember(S, NC, Target)) {
+          TargetDecl = BestMember;
+          PathAccess = BestMember->getAccess();
           NewEnd = I;
         }
       }
