@@ -307,7 +307,7 @@ namespace two_types_in_base {
 template <typename T> struct A { typedef T NameFromBase; }; // expected-note {{member type 'int' found by ambiguous name lookup}}
 template <typename T> struct B { struct NameFromBase { T m; }; }; // expected-note {{member type 'two_types_in_base::B<int>::NameFromBase' found by ambiguous name lookup}}
 template <typename T> struct C : A<T>, B<T> {
-  NameFromBase m; // expected-error {{member 'NameFromBase' found in multiple base classes of different types}} expected-warning {{use of member 'NameFromBase' found via unqualified lookup into dependent bases of class templates is a Microsoft extension}}
+  NameFromBase m; // expected-error {{member 'NameFromBase' found in multiple base classes}} expected-warning {{use of member 'NameFromBase' found via unqualified lookup into dependent bases of class templates is a Microsoft extension}}
 };
 static_assert(sizeof(C<int>) != 0, ""); // expected-note {{in instantiation of template class 'two_types_in_base::C<int>' requested here}}
 }

@@ -333,11 +333,9 @@ bool LookupResult::sanity() const {
           isa<FunctionTemplateDecl>((*begin())->getUnderlyingDecl())));
   assert(ResultKind != FoundUnresolvedValue || sanityCheckUnresolved());
   assert(ResultKind != Ambiguous || Decls.size() > 1 ||
-         (Decls.size() == 1 && (Ambiguity == AmbiguousBaseSubobjects ||
-                                Ambiguity == AmbiguousBaseSubobjectTypes)));
+         (Decls.size() == 1 && Ambiguity == AmbiguousBaseSubobjectResults));
   assert((Paths != nullptr) == (ResultKind == Ambiguous &&
-                                (Ambiguity == AmbiguousBaseSubobjectTypes ||
-                                 Ambiguity == AmbiguousBaseSubobjects)));
+                                Ambiguity == AmbiguousBaseSubobjectResults));
   return true;
 }
 
@@ -551,10 +549,13 @@ void LookupResult::resolveKind() {
 
     if (ExistingI) {
       // This is not a unique lookup result. Pick one of the results and
-      // discard the other.
+      // discard the other. Keep the more-permissive access specifier.
+      AccessSpecifier AS =
+          std::min(Decls[I].getAccess(), Decls[*ExistingI].getAccess());
       if (isPreferredLookupResult(getSema(), getLookupKind(), Decls[I],
                                   Decls[*ExistingI]))
         Decls[*ExistingI] = Decls[I];
+      Decls[*ExistingI].setAccess(AS);
       Decls[I] = Decls[--N];
       continue;
     }
@@ -643,20 +644,12 @@ void LookupResult::addDeclsFromBasePaths(const CXXBasePaths &P) {
       addDecl(*DI);
 }
 
-void LookupResult::setAmbiguousBaseSubobjects(CXXBasePaths &P) {
+void LookupResult::setAmbiguousBaseSubobjectResults(CXXBasePaths &P) {
   Paths = new CXXBasePaths;
   Paths->swap(P);
   addDeclsFromBasePaths(*Paths);
   resolveKind();
-  setAmbiguous(AmbiguousBaseSubobjects);
-}
-
-void LookupResult::setAmbiguousBaseSubobjectTypes(CXXBasePaths &P) {
-  Paths = new CXXBasePaths;
-  Paths->swap(P);
-  addDeclsFromBasePaths(*Paths);
-  resolveKind();
-  setAmbiguous(AmbiguousBaseSubobjectTypes);
+  setAmbiguous(AmbiguousBaseSubobjectResults);
 }
 
 void LookupResult::print(raw_ostream &Out) {
@@ -2156,7 +2149,7 @@ bool Sema::LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
   if (LookupCtx->isFileContext())
     return LookupQualifiedNameInUsingDirectives(*this, R, LookupCtx);
 
-  // If this isn't a C++ class, we aren't allowed to look into base
+  // If this isn't a C++ class, or we aren't allowed to look into base
   // classes, we're done.
   CXXRecordDecl *LookupRec = dyn_cast<CXXRecordDecl>(LookupCtx);
   if (!LookupRec || !LookupRec->getDefinition())
@@ -2181,6 +2174,13 @@ bool Sema::LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
   }
 
   // Perform lookup into our base classes.
+  //
+  // C++ [class.member.lookup] describes the process to perform here as if we
+  // recursively perform lookups in all base classes and merge them, but it's
+  // equivalent and much simpler to think about it differently: find all the
+  // base class subobjects that have lookup results that are not shadowed along
+  // any inheritance path to that subobject. Those lookup results are required
+  // to all be the same, and are the result of the class-scope lookup.
 
   DeclarationName Name = R.getLookupName();
   unsigned IDNS = R.getIdentifierNamespace();
@@ -2206,154 +2206,117 @@ bool Sema::LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
 
   R.setNamingClass(LookupRec);
 
-  // C++ [class.member.lookup]p2:
-  //   [...] If the resulting set of declarations are not all from
-  //   sub-objects of the same type, or the set has a nonstatic member
-  //   and includes members from distinct sub-objects, there is an
-  //   ambiguity and the program is ill-formed. Otherwise that set is
-  //   the result of the lookup.
-  QualType SubobjectType;
-  int SubobjectNumber = 0;
-  AccessSpecifier SubobjectAccess = AS_none;
+  // Fast-path the common case where we find results along exactly one path.
+  if (const CXXBasePath *Path = Paths.getUniquePath()) {
+    for (NamedDecl *ND : Path->Decls) {
+      if (!ND->isInIdentifierNamespace(R.getIdentifierNamespace()))
+        continue;
 
-  // Check whether the given lookup result contains only static members.
-  auto HasOnlyStaticMembers = [&](DeclContextLookupResult Result) {
-    for (NamedDecl *ND : Result)
-      if (ND->isInIdentifierNamespace(IDNS) && ND->isCXXInstanceMember())
-        return false;
+      AccessSpecifier AS =
+          CXXRecordDecl::MergeAccess(Path->Access, ND->getAccess());
+      R.addDecl(ND, AS);
+    }
+    R.resolveKind();
     return true;
+  }
+
+  // Otherwise we need to compute the corresponding members in all base classes
+  // in order to check for ambiguity and find the path with maximal access.
+
+  using MemberResult = const void*;
+
+  auto AsMemberResult = [&](NamedDecl *ND) -> MemberResult {
+    ND = ND->getUnderlyingDecl();
+
+    // C++ [temp.local]p3:
+    //   A lookup that finds an injected-class-name (10.2) can result in
+    //   an ambiguity in certain cases (for example, if it is found in
+    //   more than one base class). If all of the injected-class-names
+    //   that are found refer to specializations of the same class
+    //   template, and if the name is used as a template-name, the
+    //   reference refers to the class template itself and not a
+    //   specialization thereof, and is not ambiguous.
+    if (R.isTemplateNameLookup())
+      if (auto *TD = getAsTemplateNameDecl(ND))
+        ND = TD;
+
+    // C++ [class.member.lookup]p3:
+    //   type declarations (including injected-class-names) are replaced by
+    //   the types they designate
+    if (const TypeDecl *TD = dyn_cast<TypeDecl>(ND)) {
+      QualType T = Context.getTypeDeclType(TD);
+      return T.getCanonicalType().getAsOpaquePtr();
+    }
+
+    return ND->getCanonicalDecl();
   };
 
-  bool TemplateNameLookup = R.isTemplateNameLookup();
+  struct MemberInfo {
+    MemberInfo() : Access(AS_none), FoundInBases(0) {}
+    unsigned Access : 2;
+    unsigned FoundInBases : 30;
+  };
 
-  // Determine whether two sets of members contain the same members, as
-  // required by C++ [class.member.lookup]p6.
-  auto HasSameDeclarations = [&](DeclContextLookupResult A,
-                                 DeclContextLookupResult B) {
-    using Iterator = DeclContextLookupResult::iterator;
-    using Result = const void *;
+  llvm::SmallDenseMap<MemberResult, MemberInfo, 16> Members;
 
-    auto Next = [&](Iterator &It, Iterator End) -> Result {
-      while (It != End) {
-        NamedDecl *ND = *It++;
-        if (!ND->isInIdentifierNamespace(IDNS))
-          continue;
+  // C++ [class.member.lookup]/6.2:
+  //   if the declaration sets of [any two paths we found] differ, the merge is
+  //   ambiguous: the [result] is a lookup set with an invalid declaration set
+  // C++ [class.member.lookup]/7:
+  //   If [the result] is an invalid set, the program is ill-formed.
+  unsigned Bases = 0;
+  for (const CXXBasePath &Path : Paths) {
+    unsigned FoundMembers = 0;
+    for (NamedDecl *ND : Path.Decls) {
+      if (!ND->isInIdentifierNamespace(IDNS))
+        continue;
 
-        // C++ [temp.local]p3:
-        //   A lookup that finds an injected-class-name (10.2) can result in
-        //   an ambiguity in certain cases (for example, if it is found in
-        //   more than one base class). If all of the injected-class-names
-        //   that are found refer to specializations of the same class
-        //   template, and if the name is used as a template-name, the
-        //   reference refers to the class template itself and not a
-        //   specialization thereof, and is not ambiguous.
-        if (TemplateNameLookup)
-          if (auto *TD = getAsTemplateNameDecl(ND))
-            ND = TD;
-
-        // C++ [class.member.lookup]p3:
-        //   type declarations (including injected-class-names) are replaced by
-        //   the types they designate
-        if (const TypeDecl *TD = dyn_cast<TypeDecl>(ND->getUnderlyingDecl())) {
-          QualType T = Context.getTypeDeclType(TD);
-          return T.getCanonicalType().getAsOpaquePtr();
-        }
-
-        return ND->getUnderlyingDecl()->getCanonicalDecl();
-      }
-      return nullptr;
-    };
-
-    // We'll often find the declarations are in the same order. Handle this
-    // case (and the special case of only one declaration) efficiently.
-    Iterator AIt = A.begin(), BIt = B.begin(), AEnd = A.end(), BEnd = B.end();
-    while (true) {
-      Result AResult = Next(AIt, AEnd);
-      Result BResult = Next(BIt, BEnd);
-      if (!AResult && !BResult)
+      MemberResult Res = AsMemberResult(ND);
+      auto InfoIt =
+          Bases ? Members.find(Res) : Members.insert({Res, MemberInfo()}).first;
+      if (InfoIt == Members.end()) {
+        // A member in this path was not in the first path. The lookup is
+        // ambiguous.
+        R.setAmbiguousBaseSubobjectResults(Paths);
         return true;
-      if (!AResult || !BResult)
-        return false;
-      if (AResult != BResult) {
-        // Found a mismatch; carefully check both lists, accounting for the
-        // possibility of declarations appearing more than once.
-        llvm::SmallDenseMap<Result, bool, 32> AResults;
-        for (; AResult; AResult = Next(AIt, AEnd))
-          AResults.insert({AResult, /*FoundInB*/false});
-        unsigned Found = 0;
-        for (; BResult; BResult = Next(BIt, BEnd)) {
-          auto It = AResults.find(BResult);
-          if (It == AResults.end())
-            return false;
-          if (!It->second) {
-            It->second = true;
-            ++Found;
-          }
-        }
-        return AResults.size() == Found;
+      }
+
+      // C++ [class.paths]p1:
+      //   If a name can be reached by several paths through a multiple
+      //   inheritance graph, the access is that of the path that gives the
+      //   most access.
+      AccessSpecifier Access =
+          CXXRecordDecl::MergeAccess(Path.Access, ND->getAccess());
+      InfoIt->second.Access = std::min<unsigned>(InfoIt->second.Access, Access);
+
+      if (InfoIt->second.FoundInBases == Bases) {
+        ++FoundMembers;
+        ++InfoIt->second.FoundInBases;
       }
     }
-  };
 
-  for (CXXBasePaths::paths_iterator Path = Paths.begin(), PathEnd = Paths.end();
-       Path != PathEnd; ++Path) {
-    const CXXBasePathElement &PathElement = Path->back();
-
-    // Pick the best (i.e. most permissive i.e. numerically lowest) access
-    // across all paths.
-    SubobjectAccess = std::min(SubobjectAccess, Path->Access);
-
-    // Determine whether we're looking at a distinct sub-object or not.
-    if (SubobjectType.isNull()) {
-      // This is the first subobject we've looked at. Record its type.
-      SubobjectType = Context.getCanonicalType(PathElement.Base->getType());
-      SubobjectNumber = PathElement.SubobjectNumber;
-      continue;
-    }
-
-    if (SubobjectType !=
-        Context.getCanonicalType(PathElement.Base->getType())) {
-      // We found members of the given name in two subobjects of
-      // different types. If the declaration sets aren't the same, this
-      // lookup is ambiguous.
-      //
-      // FIXME: The language rule says that this applies irrespective of
-      // whether the sets contain only static members.
-      if (HasOnlyStaticMembers(Path->Decls) &&
-          HasSameDeclarations(Paths.begin()->Decls, Path->Decls))
-        continue;
-
-      R.setAmbiguousBaseSubobjectTypes(Paths);
+    // If this path didn't have all the members from the first path, the lookup
+    // is ambiguous.
+    if (FoundMembers != Members.size()) {
+      R.setAmbiguousBaseSubobjectResults(Paths);
       return true;
     }
 
-    // FIXME: This language rule no longer exists. Checking for ambiguous base
-    // subobjects should be done as part of formation of a class member access
-    // expression (when converting the object parameter to the member's type).
-    if (SubobjectNumber != PathElement.SubobjectNumber) {
-      // We have a different subobject of the same type.
-
-      // C++ [class.member.lookup]p5:
-      //   A static member, a nested type or an enumerator defined in
-      //   a base class T can unambiguously be found even if an object
-      //   has more than one base class subobject of type T.
-      if (HasOnlyStaticMembers(Path->Decls))
-        continue;
-
-      // We have found a nonstatic member name in multiple, distinct
-      // subobjects. Name lookup is ambiguous.
-      R.setAmbiguousBaseSubobjects(Paths);
-      return true;
-    }
+    ++Bases;
   }
 
   // Lookup in a base class succeeded; return these results.
 
-  for (auto *D : Paths.front().Decls) {
-    AccessSpecifier AS = CXXRecordDecl::MergeAccess(SubobjectAccess,
-                                                    D->getAccess());
-    if (NamedDecl *ND = R.getAcceptableDecl(D))
-      R.addDecl(ND, AS);
+  // Different paths can have different (but equivalent) sets of declarations;
+  // arbitrarily pick the declarations from the first path, but use the best
+  // access from any path.
+  for (NamedDecl *ND : Paths.front().Decls) {
+    if (!ND->isInIdentifierNamespace(R.getIdentifierNamespace()))
+      continue;
+
+    MemberInfo Info = Members[AsMemberResult(ND)];
+    assert(Info.FoundInBases == Bases && "member not found in all bases");
+    R.addDecl(ND, static_cast<AccessSpecifier>(Info.Access));
   }
   R.resolveKind();
   return true;
@@ -2380,7 +2343,6 @@ bool Sema::LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
   if (NNS && NNS->getKind() == NestedNameSpecifier::Super)
     return LookupInSuper(R, NNS->getAsRecordDecl());
   else
-
     return LookupQualifiedName(R, LookupCtx);
 }
 
@@ -2488,43 +2450,32 @@ void Sema::DiagnoseAmbiguousLookup(LookupResult &Result) {
   SourceRange LookupRange = Result.getContextRange();
 
   switch (Result.getAmbiguityKind()) {
-  case LookupResult::AmbiguousBaseSubobjects: {
-    CXXBasePaths *Paths = Result.getBasePaths();
-    QualType SubobjectType = Paths->front().back().Base->getType();
-    Diag(NameLoc, diag::err_ambiguous_member_multiple_subobjects)
-      << Name << SubobjectType << getAmbiguousPathsDisplayString(*Paths)
-      << LookupRange;
-
-    DeclContext::lookup_iterator Found = Paths->front().Decls.begin();
-    while (isa<CXXMethodDecl>(*Found) &&
-           cast<CXXMethodDecl>(*Found)->isStatic())
-      ++Found;
-
-    Diag((*Found)->getLocation(), diag::note_ambiguous_member_found);
-    break;
-  }
-
-  case LookupResult::AmbiguousBaseSubobjectTypes: {
-    Diag(NameLoc, diag::err_ambiguous_member_multiple_subobject_types)
-      << Name << LookupRange;
+  case LookupResult::AmbiguousBaseSubobjectResults: {
+    Diag(NameLoc,
+         diag::err_ambiguous_member_different_results_in_multiple_subobjects)
+        << Name << LookupRange;
 
     CXXBasePaths *Paths = Result.getBasePaths();
-    std::set<const NamedDecl *> DeclsPrinted;
+    std::set<const CXXRecordDecl *> BasesPrinted;
     for (CXXBasePaths::paths_iterator Path = Paths->begin(),
                                       PathEnd = Paths->end();
          Path != PathEnd; ++Path) {
-      const NamedDecl *D = Path->Decls.front();
-      if (!D->isInIdentifierNamespace(Result.getIdentifierNamespace()))
+      QualType Base = Path->back().Base->getType();
+      if (!BasesPrinted.insert(Base->getAsCXXRecordDecl()->getCanonicalDecl())
+               .second)
         continue;
-      if (DeclsPrinted.insert(D).second) {
-        if (const auto *TD = dyn_cast<TypedefNameDecl>(D->getUnderlyingDecl()))
+      for (const NamedDecl *D : Path->Decls) {
+        if (!D->isInIdentifierNamespace(Result.getIdentifierNamespace()))
+          continue;
+        if (const auto *TD =
+                dyn_cast<TypedefNameDecl>(D->getUnderlyingDecl()))
           Diag(D->getLocation(), diag::note_ambiguous_member_type_found)
-              << TD->getUnderlyingType();
+              << Base << TD->getUnderlyingType();
         else if (const auto *TD = dyn_cast<TypeDecl>(D->getUnderlyingDecl()))
           Diag(D->getLocation(), diag::note_ambiguous_member_type_found)
-              << Context.getTypeDeclType(TD);
+              << Base << Context.getTypeDeclType(TD);
         else
-          Diag(D->getLocation(), diag::note_ambiguous_member_found);
+          Diag(D->getLocation(), diag::note_ambiguous_member_found) << Base;
       }
     }
     break;

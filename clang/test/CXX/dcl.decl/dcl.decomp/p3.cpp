@@ -286,7 +286,7 @@ struct Derived : Base1, Base2 {};
 template <> struct std::tuple_size<Derived> { static constexpr size_t value = 1; };
 template <> struct std::tuple_element<0, Derived> { typedef int type; };
 
-auto [x] = Derived(); // expected-error{{member 'get' found in multiple base classes of different types}}
+auto [x] = Derived(); // expected-error{{member 'get' found in multiple base classes}}
 
 struct Base {
   template<int> int get();

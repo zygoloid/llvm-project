@@ -73,7 +73,7 @@ namespace Ambig {
 
   template<typename T>
   struct Derived : Base1<T>, Base2 {
-    typedef typename Derived::type type; // expected-error{{member 'type' found in multiple base classes of different types}}
+    typedef typename Derived::type type; // expected-error{{member 'type' found in multiple base classes}}
     type *foo(float *fp) { return fp; }
   };
 

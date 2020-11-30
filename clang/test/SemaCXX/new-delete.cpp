@@ -244,7 +244,7 @@ class X8 : public X6, public X7 {
 };
 
 void f(X8 *x8) {
-  delete x8; // expected-error {{member 'operator delete' found in multiple base classes of different types}}
+  delete x8; // expected-error {{member 'operator delete' found in multiple base classes}}
 }
 
 class X9 {

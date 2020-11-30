@@ -76,7 +76,8 @@ public:
   enum AmbiguityKind {
     /// Name lookup results in an ambiguity because multiple
     /// entities that meet the lookup criteria were found in
-    /// subobjects of different types. For example:
+    /// subobjects of different types, and the lookup results
+    /// were not the same in every type. For example:
     /// @code
     /// struct A { void f(int); }
     /// struct B { void f(double); }
@@ -86,21 +87,7 @@ public:
     ///           // types. overload resolution is not performed.
     /// }
     /// @endcode
-    AmbiguousBaseSubobjectTypes,
-
-    /// Name lookup results in an ambiguity because multiple
-    /// nonstatic entities that meet the lookup criteria were found
-    /// in different subobjects of the same type. For example:
-    /// @code
-    /// struct A { int x; };
-    /// struct B : A { };
-    /// struct C : A { };
-    /// struct D : B, C { };
-    /// int test(D d) {
-    ///   return d.x; // error: 'x' is found in two A subobjects (of B and C)
-    /// }
-    /// @endcode
-    AmbiguousBaseSubobjects,
+    AmbiguousBaseSubobjectResults,
 
     /// Name lookup results in an ambiguity because multiple definitions
     /// of entity that meet the lookup criteria were found in different
@@ -531,17 +518,11 @@ public:
     return getResultKind() == Found && isa<TagDecl>(getFoundDecl());
   }
 
-  /// Make these results show that the name was found in
-  /// base classes of different types.
+  /// Make these results show that different lookup results were found in
+  /// multiple base classes.
   ///
   /// The given paths object is copied and invalidated.
-  void setAmbiguousBaseSubobjectTypes(CXXBasePaths &P);
-
-  /// Make these results show that the name was found in
-  /// distinct base classes of the same type.
-  ///
-  /// The given paths object is copied and invalidated.
-  void setAmbiguousBaseSubobjects(CXXBasePaths &P);
+  void setAmbiguousBaseSubobjectResults(CXXBasePaths &P);
 
   /// Make these results show that the name was found in
   /// different contexts and a tag decl was hidden by an ordinary

@@ -9,13 +9,13 @@ template <class T> struct Base {
 struct X0 { };
 
 template <class T> struct Derived: Base<int>, Base<char> {
-  typename Derived::Base b;	// expected-error{{member 'Base' found in multiple base classes of different types}}
+  typename Derived::Base b;	// expected-error{{member 'Base' found in multiple base classes}}
   typename Derived::Base<double> d;	// OK
 
   void g(X0 *t) {
     t->Derived::Base<T>::f();
     t->Base<T>::f();
-    t->Base::f(); // expected-error{{member 'Base' found in multiple base classes of different types}} \
+    t->Base::f(); // expected-error{{member 'Base' found in multiple base classes}} \
     // expected-error{{no member named 'f' in 'X0'}}
   }
 };

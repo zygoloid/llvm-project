@@ -32,7 +32,7 @@ namespace PR5820 {
 
 template<typename T>
 struct BaseT {
-  void Foo(); // expected-note{{found by ambiguous name lookup}}
+  void Foo();
   int Member;
 };
 
@@ -50,7 +50,7 @@ void DerivedT<T>::Inner() {
   Derived2T<T>::Member = 42;
   this->Derived1T<T>::Foo();
   this->Derived2T<T>::Member = 42;
-  this->Foo(); // expected-error{{non-static member 'Foo' found in multiple base-class subobjects of type 'BaseT<int>'}}
+  this->Foo(); // expected-error{{ambiguous conversion from derived class 'DerivedT<int>' to base class 'BaseT<int>'}}
 }
 
 template<typename T>

@@ -1,6 +1,6 @@
 // RUN: %clang_cc1 -fsyntax-only -verify %s
 struct A { 
-  int a;  // expected-note 4{{member found by ambiguous name lookup}}
+  int a;
   static int b;
   static int c; // expected-note 2{{member found by ambiguous name lookup}}
 
@@ -9,7 +9,7 @@ struct A {
   typedef int type;
 
   static void f(int);
-  void f(float); // expected-note 2{{member found by ambiguous name lookup}}
+  void f(float);
 
   static void static_f(int);
   static void static_f(double);
@@ -35,11 +35,12 @@ struct D : B, C {
 };
 
 void test_lookup(D d) {
-  d.a; // expected-error{{non-static member 'a' found in multiple base-class subobjects of type 'A':}}
+  d.a; // expected-error{{ambiguous conversion from derived class 'D' to base class 'A'}}
   (void)d.b; // okay
-  d.c; // expected-error{{member 'c' found in multiple base classes of different types}}
-  d.d; // expected-error{{member 'd' found in multiple base classes of different types}}
-  d.f(0); // expected-error{{non-static member 'f' found in multiple base-class subobjects of type 'A':}}
+  d.c; // expected-error{{member 'c' found in multiple base classes with differing lookup results}}
+  d.d; // expected-error{{member 'd' found in multiple base classes with differing lookup results}}
+  d.f(0);
+  d.f(0.0f); // expected-error{{ambiguous conversion from derived class 'D' to base class 'A'}}
   d.static_f(0); // okay
 
   D::E e = D::enumerator; // okay
@@ -51,11 +52,12 @@ void test_lookup(D d) {
 }
 
 void D::test_lookup() {
-  a; // expected-error{{non-static member 'a' found in multiple base-class subobjects of type 'A':}}
+  a; // expected-error{{ambiguous conversion from derived class 'D' to base class 'A'}}
   (void)b; // okay
-  c; // expected-error{{member 'c' found in multiple base classes of different types}}
-  d; // expected-error{{member 'd' found in multiple base classes of different types}}
-  f(0); // expected-error{{non-static member 'f' found in multiple base-class subobjects of type 'A':}}
+  c; // expected-error{{member 'c' found in multiple base classes with differing lookup results}}
+  d; // expected-error{{member 'd' found in multiple base classes with differing lookup results}}
+  f(0);
+  f(0.0f); // expected-error {{ambiguous conversion from derived class 'D' to base class 'A'}}
   static_f(0); // okay
 
   E e = enumerator; // okay
@@ -63,7 +65,7 @@ void D::test_lookup() {
 
   E2 e2 = enumerator2; // okay
 
-  E3 e3; // expected-error{{member 'E3' found in multiple base classes of different types}}
+  E3 e3; // expected-error{{member 'E3' found in multiple base classes with differing lookup results}}
 }
 
 struct B2 : virtual A {
@@ -94,8 +96,9 @@ void test_virtual_lookup(D2 d2, G g) {
   (void)d2.a;
   (void)d2.b;
   (void)d2.c; // okay
-  d2.d; // expected-error{{member 'd' found in multiple base classes of different types}}
+  d2.d; // expected-error{{member 'd' found in multiple base classes with differing lookup results}}
   d2.f(0); // okay
+  d2.f(0.0f);
   d2.static_f(0); // okay
 
   D2::E e = D2::enumerator; // okay
@@ -103,9 +106,9 @@ void test_virtual_lookup(D2 d2, G g) {
 
   D2::E2 e2 = D2::enumerator2; // okay
 
-  D2::E3 e3; // expected-error{{member 'E3' found in multiple base classes of different types}}
+  D2::E3 e3; // expected-error{{member 'E3' found in multiple base classes with differing lookup results}}
 
-  g.a; // expected-error{{non-static member 'a' found in multiple base-class subobjects of type 'A':}}
+  g.a; // expected-error{{ambiguous conversion from derived class 'G' to base class 'A'}}
   g.static_f(0); // okay
 }
 
@@ -113,8 +116,9 @@ void D2::test_virtual_lookup() {
   (void)a;
   (void)b;
   (void)c; // okay
-  d; // expected-error{{member 'd' found in multiple base classes of different types}}
+  d; // expected-error{{member 'd' found in multiple base classes with differing lookup results}}
   f(0); // okay
+  f(0.0f); // okay
   static_f(0); // okay
 
   E e = enumerator; // okay
@@ -122,11 +126,11 @@ void D2::test_virtual_lookup() {
 
   E2 e2 = enumerator2; // okay
 
-  E3 e3; // expected-error{{member 'E3' found in multiple base classes of different types}}
+  E3 e3; // expected-error{{member 'E3' found in multiple base classes with differing lookup results}}
 }
 
 void G::test_virtual_lookup() {
-  a; // expected-error{{non-static member 'a' found in multiple base-class subobjects of type 'A':}}
+  a; // expected-error{{ambiguous conversion from derived class 'G' to base class 'A'}}
   static_f(0); // okay
 }
 
@@ -144,7 +148,7 @@ struct HasAnotherMemberType : HasMemberType1, HasMemberType2 {
 };
 
 struct UsesAmbigMemberType : HasMemberType1, HasMemberType2 {
-  type t; // expected-error{{member 'type' found in multiple base classes of different types}}
+  type t; // expected-error{{member 'type' found in multiple base classes with differing lookup results}}
 };
 
 struct X0 {

@@ -476,9 +476,9 @@ namespace dr39 { // dr39: no
     };
     struct B : A, virtual V {
       using A::x; // expected-note {{found}}
-      float &x(float);
+      float &x(float); // expected-note {{found}}
       using A::y; // expected-note {{found}}
-      static float &y(float);
+      static float &y(float); // expected-note {{found}}
       using V::z;
       float &z(float);
     };
@@ -498,21 +498,22 @@ namespace dr39 { // dr39: no
   }
 
   namespace example4 {
-    struct A { int n; }; // expected-note {{found}}
+    struct A { int n; };
     struct B : A {};
     struct C : A {};
-    struct D : B, C { int f() { return n; } }; // expected-error {{found in multiple base-class}}
+    struct D : B, C { int f() { return n; } }; // expected-error {{ambiguous conversion}}
   }
 
   namespace PR5916 {
-    // FIXME: This is valid.
-    struct A { int n; }; // expected-note +{{found}}
+    struct A { int n; };
     struct B : A {};
     struct C : A {};
     struct D : B, C {};
-    int k = sizeof(D::n); // expected-error {{found in multiple base}} expected-error {{unknown type name}}
-#if __cplusplus >= 201103L
-    decltype(D::n) n; // expected-error {{found in multiple base}}
+    int k = sizeof(D::n);
+#if __cplusplus < 201103L
+    // expected-error@-2 {{invalid use of non-static data member}}
+#else
+    decltype(D::n) n;
 #endif
   }
 }

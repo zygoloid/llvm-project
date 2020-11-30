@@ -10,19 +10,38 @@ namespace rdar8436162 {
   class ClsB : virtual private ClsA {
   public:
     using ClsA::f;
-    using ClsA::g; // expected-note{{member found by ambiguous name lookup}}
+    using ClsA::g;
   };
 
   class ClsF : virtual private ClsA {
   public:
     using ClsA::f;
-    using ClsA::g; // expected-note{{member found by ambiguous name lookup}}
+    using ClsA::g;
   };
 
   class ClsE : public ClsB, public ClsF {
-    void test() { 
+    void test() {
       f();
-      g(); // expected-error{{member 'g' found in multiple base classes of different types}}
+      g();
+    }
+  };
+
+  struct A {
+    static void f();
+    void g();
+  };
+  struct B : private A {
+    using A::f;
+    using A::g;
+  };
+  struct C : private A {
+    using A::f;
+    using A::g;
+  };
+  struct D : B, C {
+    void test() {
+      f();
+      g(); // expected-error {{ambiguous conversion from derived class}}
     }
   };
 }

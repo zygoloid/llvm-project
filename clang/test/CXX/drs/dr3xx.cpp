@@ -147,7 +147,7 @@ namespace dr306 { // dr306: dup 39
   template<typename T> struct Y { typedef T X; }; // expected-note {{member type 'const dr306::X' found}}
   template<typename T> struct Z : X, Y<T> {};
   Z<X>::X zx;
-  Z<const X>::X zcx; // expected-error {{member 'X' found in multiple base classes of different types}}
+  Z<const X>::X zcx; // expected-error {{member 'X' found in multiple base classes with differing lookup results}}
 }
 
 // dr307: na

@@ -27,13 +27,13 @@ namespace UnambiguousReorderedMembers {
   // multiple base classes.
   struct A { static void f(); };
   struct B { static void f(int); };
-  struct C : A, B { using A::f; using B::f; }; // expected-note {{found}}
+  struct C : A, B { using A::f; using B::f; }; // expected-note 2{{found}}
   struct D : B, A { using B::f; using A::f; };
   struct E : C, D {};
   void f(E e) { e.f(0); }
 
   // But a different declaration set in different base classes does result in ambiguity.
-  struct X : B, A { using B::f; using A::f; static void f(int, int); }; // expected-note {{found}}
+  struct X : B, A { using B::f; using A::f; static void f(int, int); }; // expected-note 3{{found}}
   struct Y : C, X {};
-  void g(Y y) { y.f(0); } // expected-error {{found in multiple base classes of different types}}
+  void g(Y y) { y.f(0); } // expected-error {{found in multiple base classes with differing lookup results}}
 }

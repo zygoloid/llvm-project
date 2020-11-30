@@ -28,8 +28,8 @@ class D : public B, public C { void glorp(); };
 void D::glorp() {
   x++;
   f();
-  y++; // expected-error{{member 'y' found in multiple base classes of different types}}
-  g(); // expected-error{{member 'g' found in multiple base classes of different types}}
+  y++; // expected-error{{member 'y' found in multiple base classes with differing lookup results}}
+  g(); // expected-error{{member 'g' found in multiple base classes with differing lookup results}}
 }
 
 // PR6462

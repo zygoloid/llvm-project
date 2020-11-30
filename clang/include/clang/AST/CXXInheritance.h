@@ -190,6 +190,14 @@ public:
 
   using decl_range = llvm::iterator_range<decl_iterator>;
 
+  const CXXBasePath *getUniquePath() const {
+    if (begin() == end())
+      return nullptr;
+    if (std::next(begin()) == end())
+      return &*begin();
+    return nullptr;
+  }
+
   /// Determine whether the path from the most-derived type to the
   /// given base type is ambiguous (i.e., it refers to multiple subobjects of
   /// the same base type).

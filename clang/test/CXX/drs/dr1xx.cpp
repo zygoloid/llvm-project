@@ -843,7 +843,7 @@ namespace dr176 { // dr176: yes
     }
   };
 
-  template<typename T> struct Base {}; // expected-note 2{{found}}
+  template<typename T> struct Base {}; // expected-note-re 2{{Base<{{int|char}}>' found}}
   template<typename T> struct Derived : public Base<T> {
     void f() {
       typedef typename Derived::template Base<T> A;

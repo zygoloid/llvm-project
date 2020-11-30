@@ -12,7 +12,7 @@ namespace test1 {
   namespace B { template<typename T> struct Base { typedef T t; }; } // expected-note {{member type 'test1::B::Base<int>' found}}
 
   template<typename T> struct Derived : A::Base<char>, B::Base<int> {
-    typename Derived::Base<float>::t x; // expected-error {{found in multiple base classes of different types}}
+    typename Derived::Base<float>::t x; // expected-error {{found in multiple base classes}}
   };
 
   class X : A::Base<int> {}; // expected-note 2{{private}}
@@ -41,10 +41,10 @@ namespace test2 {
   template<typename ...T> struct X : T... {};
 
   void f() {
-    X<A, B>::x<int>(); // expected-error {{found in multiple base classes of different types}}
-    X<A, C>::x<int>(); // expected-error {{found in multiple base classes of different types}}
-    X<B, C>::x<int>(); // expected-error {{found in multiple base classes of different types}}
-    X<A, B, C>::x<int>(); // expected-error {{found in multiple base classes of different types}}
-    X<A, B, D>::x<int>(); // expected-error {{found in multiple base classes of different types}}
+    X<A, B>::x<int>(); // expected-error {{found in multiple base classes}}
+    X<A, C>::x<int>(); // expected-error {{found in multiple base classes}}
+    X<B, C>::x<int>(); // expected-error {{found in multiple base classes}}
+    X<A, B, C>::x<int>(); // expected-error {{found in multiple base classes}}
+    X<A, B, D>::x<int>(); // expected-error {{found in multiple base classes}}
   }
 }

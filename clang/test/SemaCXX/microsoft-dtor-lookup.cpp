@@ -20,7 +20,7 @@ struct C : A, B {
 };
 
 struct VC : A, B {
-  virtual ~VC(); // expected-error {{member 'operator delete' found in multiple base classes of different types}}
+  virtual ~VC(); // expected-error {{member 'operator delete' found in multiple base classes with differing lookup results}}
 };
 
 void f() {
