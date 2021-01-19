@@ -74,11 +74,16 @@ public:
   /// used to indicate a path which permits no legal access.
   AccessSpecifier Access = AS_public;
 
-  CXXBasePath() = default;
+  /// Additional data stashed on the base path by its consumers.
+  union {
+    /// The set of declarations found inside this base class
+    /// subobject. Used by name lookup.
+    DeclContext::lookup_result Decls = {};
 
-  /// The set of declarations found inside this base class
-  /// subobject.
-  DeclContext::lookup_result Decls;
+    /// The most-accessible declaration found inside this base class.
+    /// Used by access checking.
+    NamedDecl *BestDecl;
+  };
 
   void clear() {
     SmallVectorImpl<CXXBasePathElement>::clear();

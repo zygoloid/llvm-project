@@ -259,13 +259,13 @@ namespace MultiplePathsToSameMember {
 
   namespace Virtual {
     struct A {
-      int a; // expected-note {{declared here}}
+      int a;
       using T = int;
     };
-    struct B : private virtual A {}; // expected-note {{constrained by private inheritance here}}
+    struct B : private virtual A {};
     struct C : public virtual A {
     private:
-      using A::a; // expected-note {{declared private here}}
+      using A::a; // expected-note 4{{declared private here}}
       using T = int; // expected-note 4{{declared private here}}
     };
     struct D : public virtual A {};
@@ -282,12 +282,12 @@ namespace MultiplePathsToSameMember {
     struct X5 : B, E {};
     struct X6 : E, B {};
 
-    int k1 = X1().a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::Virtual::A'}}
+    int k1 = X1().a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::Virtual::C'}}
     int k2 = X2().a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::Virtual::C'}}
-    // FIXME: These are ill-formed. The public members are hidden by the
-    // private ones.
-    int k3 = X3().a;
-    int k4 = X4().a;
+    // Public declarations in vbase A (reached via D) are hidden by private
+    // declarations in C.
+    int k3 = X3().a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::Virtual::C'}}
+    int k4 = X4().a; // expected-error {{'a' is a private member of 'MultiplePathsToSameMember::Virtual::C'}}
     int k5 = X5().a;
     int k6 = X6().a;
     X1::T u1; // expected-error {{'T' is a private member of 'MultiplePathsToSameMember::Virtual::C'}}

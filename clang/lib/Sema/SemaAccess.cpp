@@ -885,14 +885,13 @@ FindBestCorrespondingMember(Sema &S, const CXXRecordDecl *RD,
   NamedDecl *Best = nullptr;
   for (NamedDecl *Corresponding :
        RD->lookup(Target.getTargetDecl()->getDeclName())) {
-    // FIXME: Do we ever need to skip lookup results in the wrong IDNS?
-    // FIXME: declaresSameEntity doesn't correctly determine whether
-    // two type declarations declare the same type.
+    // Note that declaresSameEntity doesn't correctly determine whether
+    // two type declarations declare the same type entity.
     if ((!Best || Best->getAccess() > Corresponding->getAccess()) &&
         (declaresSameEntity(Corresponding->getUnderlyingDecl(),
-                            Target.getTargetDecl()) ||
+                            Target.getTargetDecl()->getUnderlyingDecl()) ||
          declaresSameType(S.Context, Corresponding->getUnderlyingDecl(),
-                          Target.getTargetDecl())))
+                          Target.getTargetDecl()->getUnderlyingDecl())))
       Best = Corresponding;
   }
   return Best;
@@ -959,39 +958,29 @@ FindBestCorrespondingMember(Sema &S, const CXXRecordDecl *RD,
 ///
 /// \param Target the access target, updated to the corresponding member found
 ///        along the best path.
-/// \param FinalAccess the access of the "final step", or AS_public if
-///        there is no final step.
 /// \return null if friendship is dependent
 static CXXBasePath *FindBestPath(Sema &S,
                                  const EffectiveContext &EC,
                                  AccessTarget &Target,
-                                 AccessSpecifier FinalAccess,
                                  CXXBasePaths &Paths) {
   // Derive the paths to the desired base.
   const CXXRecordDecl *Derived = Target.getNamingClass();
 
-  // We need to re-do the lookup to find all the right paths if the target is a
-  // type name. There could be more matching declarations that are not in
-  // classes derived from the declaring class of the underlying declaration.
-  bool RedoLookup = false;
-  if (Target.isMemberAccess() &&
-      isa<TypeDecl>(Target.getTargetDecl()->getUnderlyingDecl())) {
-    auto DeclaresTypeWithTargetName = [&](const CXXBaseSpecifier *Specifier,
-                                          CXXBasePath &Path) {
-      for (NamedDecl *ND :
-           Specifier->getType()->getAsCXXRecordDecl()->lookup(
-               Target.getTargetDecl()->getDeclName())) {
-        if (!isa<TypeDecl>(ND->getUnderlyingDecl()))
-          continue;
-        // FIXME: Do we need to use the same IDNS as the original lookup to
-        // avoid considering too many paths?
-        if (ND->isInIdentifierNamespace(Decl::IDNS_Type))
-          return true;
+  if (Target.isMemberAccess()) {
+    // Redo class-scope lookup to find the set of possible access paths.
+    auto DeclaresCorrespondingMember = [&](const CXXBaseSpecifier *Specifier,
+                                           CXXBasePath &Path) {
+      // Because name lookup didn't encounter an ambiguity, we know that this
+      // lookup will stop at exactly the classes where non-shadowed
+      // declarations of the found entity were found.
+      if (NamedDecl *BestMember = FindBestCorrespondingMember(
+              S, Specifier->getType()->getAsCXXRecordDecl(), Target)) {
+        Path.BestDecl = BestMember;
+        return true;
       }
       return false;
     };
-    Derived->lookupInBases(DeclaresTypeWithTargetName, Paths);
-    RedoLookup = true;
+    Derived->lookupInBases(DeclaresCorrespondingMember, Paths);
   } else {
     const CXXRecordDecl *Base = Target.getDeclaringClass();
     bool isDerived = Derived->isDerivedFrom(const_cast<CXXRecordDecl*>(Base),
@@ -1000,10 +989,10 @@ static CXXBasePath *FindBestPath(Sema &S,
     (void) isDerived;
   }
 
+  assert(Paths.begin() != Paths.end() && "no paths?");
+
   CXXBasePath *BestPath = nullptr;
   NamedDecl *BestTarget = nullptr;
-
-  assert(FinalAccess != AS_none && "forbidden access after declaring class");
 
   bool AnyDependent = false;
 
@@ -1011,20 +1000,33 @@ static CXXBasePath *FindBestPath(Sema &S,
   for (CXXBasePaths::paths_iterator PI = Paths.begin(), PE = Paths.end();
          PI != PE; ++PI) {
     AccessTarget::SavedInstanceContext _ = Target.saveInstanceContext();
-    NamedDecl *TargetDecl = Target.getTargetDecl();
-    AccessSpecifier PathAccess = FinalAccess;
+    AccessSpecifier PathAccess;
 
-    if (RedoLookup) {
-      const CXXRecordDecl *Base =
+    if (Target.isMemberAccess()) {
+      // Determine if the declaration at the end of this path is accessible
+      // from EC when named in the corresponding base class.
+      const CXXRecordDecl *DeclaringClass =
           PI->back().Base->getType()->getAsCXXRecordDecl();
-      if (Base != Target.getDeclaringClass()) {
-        TargetDecl = FindBestCorrespondingMember(S, Base, Target);
-        PathAccess = TargetDecl->getAccess();
+      PathAccess = PI->BestDecl->getAccess();
+      switch (HasAccess(S, EC, DeclaringClass, PathAccess, Target)) {
+      case AR_accessible:
+        PathAccess = AS_public;
+        // Future tests are not against members and so do not have
+        // instance context.
+        Target.suppressInstanceContext();
+        break;
+      case AR_inaccessible:
+        break;
+      case AR_dependent:
+        AnyDependent = true;
+        continue;
       }
+    } else {
+      PathAccess = AS_public;
     }
 
     // Walk through the path backwards.
-    CXXBasePath::iterator I = PI->end(), E = PI->begin(), NewEnd = PI->end();
+    CXXBasePath::iterator I = PI->end(), E = PI->begin();
     while (I != E) {
       --I;
 
@@ -1038,20 +1040,6 @@ static CXXBasePath *FindBestPath(Sema &S,
 
       AccessSpecifier BaseAccess = I->Base->getAccessSpecifier();
       PathAccess = std::max(PathAccess, BaseAccess);
-
-      // If the target is shadowed in this class, the access is the best access
-      // of the corresponding declaration here, if any. Note that in an
-      // unambiguous lookup, every path must end in the same set of lookup
-      // results, so if we don't find a corresponding member here, we must find
-      // one later along the path.
-      if (Target.isMemberAccess()) {
-        if (NamedDecl *BestMember =
-                FindBestCorrespondingMember(S, NC, Target)) {
-          TargetDecl = BestMember;
-          PathAccess = BestMember->getAccess();
-          NewEnd = I;
-        }
-      }
 
       if (PathAccess == AS_none) {
         if (Target.isMemberAccess())
@@ -1080,8 +1068,7 @@ static CXXBasePath *FindBestPath(Sema &S,
     if (BestPath == nullptr || PathAccess < BestPath->Access) {
       BestPath = &*PI;
       BestPath->Access = PathAccess;
-      BestPath->erase(NewEnd, BestPath->end());
-      BestTarget = TargetDecl;
+      BestTarget = PI->BestDecl;
 
       // Short-circuit if we found a public path.
       if (BestPath->Access == AS_public) {
@@ -1102,7 +1089,7 @@ static CXXBasePath *FindBestPath(Sema &S,
   if (AnyDependent)
     return nullptr;
 
-  if (Target.isMemberAccess())
+  if (Target.isMemberAccess() && BestPath)
     Target.resolveTarget(BestTarget);
   return BestPath;
 }
@@ -1253,59 +1240,43 @@ static void DiagnoseAccessPath(Sema &S,
   // This basically repeats the main algorithm but keeps some more
   // information.
 
-  // The natural access so far.
+  // We might find the declaration in the naming class itself. In that case,
+  // we don't need to consider paths.
+  if (NamedDecl *BestMember = FindBestCorrespondingMember(
+          S, entity.getEffectiveNamingClass(), entity)) {
+    entity.resolveTarget(BestMember);
+    return diagnoseBadDirectAccess(S, EC, entity);
+  }
+
+  CXXBasePaths paths;
+  CXXBasePath &path = *FindBestPath(S, EC, entity, paths);
+  assert(path.Access != AS_public);
+
+  // Re-derive the access to the declaration, if any.
   AccessSpecifier accessSoFar = AS_public;
+  if (entity.isMemberAccess()) {
+    accessSoFar = path.BestDecl->getAccess();
+    assert(accessSoFar != AS_none);
 
-  auto CheckTargetDecl = [&] {
-    // Check whether we have special rights to the declaring class.
-    if (!entity.isMemberAccess())
-      return false;
-
-    NamedDecl *D = entity.getTargetDecl();
-    accessSoFar = D->getAccess();
-    const CXXRecordDecl *declaringClass = entity.getDeclaringClass();
-
+    const CXXRecordDecl *declaringClass =
+        path.back().Base->getType()->getAsCXXRecordDecl();
     switch (HasAccess(S, EC, declaringClass, accessSoFar, entity)) {
-    // If the declaration is accessible when named in its declaring
-    // class, then we must be constrained by the path.
+    case AR_inaccessible: break;
     case AR_accessible:
       accessSoFar = AS_public;
       entity.suppressInstanceContext();
       break;
-
-    case AR_inaccessible:
-      if (accessSoFar == AS_private ||
-          declaringClass == entity.getEffectiveNamingClass()) {
-        diagnoseBadDirectAccess(S, EC, entity);
-        return true;
-      }
-      break;
-
     case AR_dependent:
       llvm_unreachable("cannot diagnose dependent access");
     }
-    return false;
-  };
-
-  if (CheckTargetDecl())
-    return;
-
-  const CXXRecordDecl *origDeclaringClass = entity.getDeclaringClass();
-
-  CXXBasePaths paths;
-  CXXBasePath &path = *FindBestPath(S, EC, entity, accessSoFar, paths);
-  assert(path.Access != AS_public);
-
-  // We might have found a more specific declaring class along the best path.
-  if (entity.getDeclaringClass() != origDeclaringClass && CheckTargetDecl())
-    return;
+    if (accessSoFar == AS_private)
+      return diagnoseBadDirectAccess(S, EC, entity);
+  }
 
   CXXBasePath::iterator i = path.end(), e = path.begin();
   CXXBasePath::iterator constrainingBase = i;
   while (i != e) {
     --i;
-
-    assert(accessSoFar != AS_none && accessSoFar != AS_private);
 
     // Is the entity accessible when named in the deriving class, as
     // modified by the base specifier?
@@ -1453,44 +1424,24 @@ static AccessResult IsAccessible(Sema &S,
     }
   }
 
-  AccessTarget::SavedInstanceContext _ = Entity.saveInstanceContext();
-
-  // We lower member accesses to base accesses by pretending that the
-  // member is a base class of its declaring class.
-  AccessSpecifier FinalAccess;
-
+  // If the entity is declared in the naming class, we don't need to consider
+  // paths.
   if (Entity.isMemberAccess()) {
-    // Determine if the declaration is accessible from EC when named
-    // in its declaring class.
-    NamedDecl *Target = Entity.getTargetDecl();
-    const CXXRecordDecl *DeclaringClass = Entity.getDeclaringClass();
-
-    FinalAccess = Target->getAccess();
-    switch (HasAccess(S, EC, DeclaringClass, FinalAccess, Entity)) {
-    case AR_accessible:
-      // Target is accessible at EC when named in its declaring class.
-      // We can now hill-climb and simply check whether the declaring
-      // class is accessible as a base of the naming class.  This is
-      // equivalent to checking the access of a notional public
-      // member with no instance context.
-      FinalAccess = AS_public;
-      Entity.suppressInstanceContext();
-      break;
-    case AR_inaccessible: break;
-    case AR_dependent: return AR_dependent; // see above
+    if (NamedDecl *BestMember =
+            FindBestCorrespondingMember(S, NamingClass, Entity)) {
+      Entity.resolveTarget(BestMember);
+      // Don't repeat checks we already performed when checking unprivileged
+      // access above.
+      if (UnprivilegedAccess != AS_none &&
+          BestMember->getAccess() >= UnprivilegedAccess)
+        return AR_inaccessible;
+      return HasAccess(S, EC, NamingClass, BestMember->getAccess(), Entity);
     }
-
-    if (DeclaringClass == NamingClass)
-      return (FinalAccess == AS_public ? AR_accessible : AR_inaccessible);
-  } else {
-    FinalAccess = AS_public;
   }
 
-  assert(Entity.getDeclaringClass() != NamingClass);
-
-  // Append the declaration's access if applicable.
+  // Find the most-accessible path to the entity.
   CXXBasePaths Paths;
-  CXXBasePath *Path = FindBestPath(S, EC, Entity, FinalAccess, Paths);
+  CXXBasePath *Path = FindBestPath(S, EC, Entity, Paths);
   if (!Path)
     return AR_dependent;
 
