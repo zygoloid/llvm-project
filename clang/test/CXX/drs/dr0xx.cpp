@@ -456,7 +456,7 @@ namespace dr38 { // dr38: yes
   template X<int> operator+<int>(X<int>, X<int>);
 }
 
-namespace dr39 { // dr39: no
+namespace dr39 { // dr39: 12
   namespace example1 {
     struct A { int &f(int); };
     struct B : A {
