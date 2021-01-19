@@ -231,6 +231,8 @@ struct AccessTarget : public AccessedEntity {
     return namingClass->getCanonicalDecl();
   }
 
+  /// Update the target to a specific, most-accessible declaration of the
+  /// entity.
   void resolveTarget(NamedDecl *ND) {
     setTargetDecl(ND);
     DeclaringClass = FindDeclaringClass(ND);
