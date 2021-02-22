@@ -43,29 +43,6 @@ class StoredDeclsList {
   /// external declarations.
   DeclsAndHasExternalTy Data;
 
-  void setOnlyValue(NamedDecl *ND) {
-    assert(!getAsList() && "Not inline");
-    Data.setPointer(ND);
-    // Make sure that Data is a plain NamedDecl* so we can use its address
-    // at getLookupResult.
-    assert(*(NamedDecl **)Data.getPointer().getAddrOfPtr1() == ND &&
-           "PointerUnion mangles the NamedDecl pointer!");
-  }
-
-  void push_front(NamedDecl *ND) {
-    assert(!isNull() && "No need to call push_front");
-
-    ASTContext &C = getASTContext();
-
-    // auto Vec = getLookupResult();
-    // (void)Vec;
-    // assert(llvm::find(Vec, ND) == Vec.end() && "list still contains decl");
-
-    DeclListNode *Node = C.AllocateDeclListNode(ND);
-    Node->Rest = Data.getPointer();
-    Data.setPointer(Node);
-  }
-
   template<typename Fn>
   void erase_if(Fn ShouldErase) {
     Decls List = Data.getPointer();
@@ -89,6 +66,9 @@ class StoredDeclsList {
         List = N->Rest;
         C.DeallocateDeclListNode(N);
       } else {
+        // We're discarding the last declaration in the list. The last node we
+        // want to keep (if any) will be of the form DeclListNode(D, <rest>);
+        // replace it with just D.
         if (NewLast) {
           DeclListNode *Node = NewLast->get<DeclListNode*>();
           *NewLast = Node->D;
@@ -104,7 +84,7 @@ class StoredDeclsList {
   }
 
   void erase(NamedDecl *ND) {
-    erase_if([ND](NamedDecl *D){ return D == ND; });
+    erase_if([ND](NamedDecl *D) { return D == ND; });
   }
 
 public:
@@ -120,12 +100,10 @@ public:
       return;
     // If this is a list-form, free the list.
     ASTContext &C = getASTContext();
-    Decls List = Data.getPointer();
-    while(List.is<DeclListNode*>()) {
-      DeclListNode *ToDealloc = List.get<DeclListNode*>();
-      List = ToDealloc->Rest;
+    for (Decls List = Data.getPointer();
+         DeclListNode *ToDealloc = List.dyn_cast<DeclListNode *>();
+         List = ToDealloc->Rest)
       C.DeallocateDeclListNode(ToDealloc);
-    }
   }
 
   ~StoredDeclsList() {
@@ -170,72 +148,63 @@ public:
 
   void remove(NamedDecl *D) {
     assert(!isNull() && "removing from empty list");
-    if (NamedDecl *Singleton = getAsDecl()) {
-      if (Singleton == D)
-        Data.setPointer(nullptr);
-      return;
-    }
-
     erase(D);
   }
 
   /// Remove any declarations which were imported from an external AST source.
   void removeExternalDecls() {
-    if (isNull()) {
-      // Nothing to do.
-    } else if (NamedDecl *Singleton = getAsDecl()) {
-      if (Singleton->isFromASTFile())
-        *this = StoredDeclsList();
-    } else {
-      erase_if([](NamedDecl *ND){ return ND->isFromASTFile(); });
-      // Don't have any external decls any more.
-      Data.setInt(0);
-    }
+    erase_if([](NamedDecl *ND) { return ND->isFromASTFile(); });
+
+    // Don't have any external decls any more.
+    Data.setInt(0);
   }
 
-  /// getLookupResult - Return an array of all the decls that this list
-  /// represents.
+  /// Return an array of all the decls that this list represents.
   DeclContext::lookup_result getLookupResult() const {
     return DeclContext::lookup_result(Data.getPointer());
   }
 
-  /// HandleRedeclaration - If this is a redeclaration of an existing decl,
-  /// replace the old one with D and return true. Otherwise return false.
+  /// If this is a redeclaration of an existing decl, replace the old one with
+  /// D and return true. Otherwise return false.
   bool HandleRedeclaration(NamedDecl *D, bool IsKnownNewer) {
     // Most decls only have one entry in their list, special case it.
     if (NamedDecl *OldD = getAsDecl()) {
       if (!D->declarationReplaces(OldD, IsKnownNewer))
         return false;
-      setOnlyValue(D);
+      Data.setPointer(D);
       return true;
     }
 
     // Determine if this declaration is actually a redeclaration.
-    for (DeclListNode* N = getAsList(); N;
-         N = N->Rest.dyn_cast<DeclListNode*>()) {
+    for (DeclListNode *N = getAsList(); N;
+         N = N->Rest.dyn_cast<DeclListNode *>()) {
       if (D->declarationReplaces(N->D, IsKnownNewer)) {
         N->D = D;
         return true;
       }
-      if (auto *ND = N->Rest.dyn_cast<NamedDecl*>()) // the two element case
+      if (auto *ND = N->Rest.dyn_cast<NamedDecl *>()) {
         if (D->declarationReplaces(ND, IsKnownNewer)) {
           N->Rest = D;
           return true;
         }
+      }
     }
 
     return false;
   }
 
-  /// AddDecl - Called to add declarations when it is not a redeclaration to
-  /// merge it into the appropriate place in our list.
+  /// Called to add declarations when it is not a redeclaration to merge it
+  /// into the appropriate place in our list.
   void AddDecl(NamedDecl *D) {
     if (isNull()) {
-      setOnlyValue(D);
+      Data.setPointer(D);
       return;
     }
 
-    push_front(D);
+    ASTContext &C = D->getASTContext();
+    DeclListNode *Node = C.AllocateDeclListNode(D);
+    Node->Rest = Data.getPointer();
+    Data.setPointer(Node);
   }
 
   LLVM_DUMP_METHOD void dump() const {

@@ -10889,14 +10889,13 @@ void ASTContext::forEachMultiversionedFunctionVersion(
   auto R = FD->getDeclContext()->getRedeclContext()->lookup(FD->getDeclName());
   llvm::SetVector<NamedDecl*> Decls(R.begin(), R.end());
   FD = FD->getMostRecentDecl();
-  llvm::SmallDenseSet<const FunctionDecl*, 4> SeenDecls;
+  // FIXME: The order of traversal here matters and depends on the order of
+  // lookup results, which happens to be newest-to-oldest, but we shouldn't
+  // rely on that, especially in the presence of modules.
   for (auto I = Decls.rbegin(), E = Decls.rend(); I != E; ++I) {
     FunctionDecl *CurFD = (*I)->getAsFunction()->getMostRecentDecl();
-    if (CurFD && hasSameType(CurFD->getType(), FD->getType()) &&
-        !llvm::is_contained(SeenDecls, CurFD)) {
-      SeenDecls.insert(CurFD);
+    if (CurFD && hasSameType(CurFD->getType(), FD->getType()))
       Pred(CurFD);
-    }
   }
 }
 

@@ -237,10 +237,7 @@ Decl *Sema::ActOnProperty(Scope *S, SourceLocation AtLoc,
         FoundInSuper = true;
         break;
       }
-      if (FoundInSuper)
-        break;
-      else
-        CurrentInterfaceDecl = Super;
+      CurrentInterfaceDecl = Super;
     }
 
     if (FoundInSuper) {

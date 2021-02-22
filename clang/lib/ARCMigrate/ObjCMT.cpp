@@ -621,14 +621,12 @@ ClassImplementsAllMethodsAndProperties(ASTContext &Ctx,
                                   Property->getDeclName().getAsIdentifierInfo(),
                                   Property->getQueryKind()))
           return false;
-      }
-      else if (auto *ClassProperty = dyn_cast<ObjCPropertyDecl>(R.front())) {
-          if ((ClassProperty->getPropertyAttributes()
-              != Property->getPropertyAttributes()) ||
-              !Ctx.hasSameType(ClassProperty->getType(), Property->getType()))
-            return false;
-      }
-      else
+      } else if (auto *ClassProperty = R.find_first<ObjCPropertyDecl>()) {
+        if ((ClassProperty->getPropertyAttributes() !=
+             Property->getPropertyAttributes()) ||
+            !Ctx.hasSameType(ClassProperty->getType(), Property->getType()))
+          return false;
+      } else
         return false;
     }
 

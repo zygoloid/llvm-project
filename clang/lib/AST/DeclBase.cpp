@@ -1931,11 +1931,6 @@ void DeclContext::makeDeclVisibleInContextImpl(NamedDecl *D, bool Internal) {
     return;
   }
 
-  if (DeclNameEntries.isNull()) {
-    DeclNameEntries.AddDecl(D);
-    return;
-  }
-
   if (DeclNameEntries.HandleRedeclaration(D, /*IsKnownNewer*/!Internal)) {
     // This declaration has replaced an existing one for which
     // declarationReplaces returns true.

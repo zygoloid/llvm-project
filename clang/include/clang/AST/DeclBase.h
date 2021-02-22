@@ -1274,12 +1274,8 @@ private:
   DeclListNode(NamedDecl *ND) : D(ND) {}
 };
 
-/// The results of name lookup within a DeclContext. This is either a
-/// single result (with no stable storage) or a collection of results (with
-/// stable storage provided by the lookup table).
+/// The results of name lookup within a DeclContext.
 class DeclContextLookupResult {
-  friend class StoredDeclsList;
-
   using Decls = DeclListNode::Decls;
 
   /// When in collection form, this is what the Data pointer points to.
@@ -1304,6 +1300,10 @@ public:
   bool isSingleResult() const { return Result.dyn_cast<NamedDecl*>(); }
   reference front() const { return *begin(); }
 
+  // Find the first declaration of the given type in the list. Note that this
+  // is not in general the earliest-declared declaration, and should only be
+  // used when it's not possible for there to be more than one match or where
+  // it doesn't matter which one is found.
   template<class T> T *find_first() const {
     for (auto *D : *this)
       if (T *Decl = dyn_cast<T>(D))
