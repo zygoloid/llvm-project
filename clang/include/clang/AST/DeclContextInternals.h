@@ -204,6 +204,7 @@ public:
     DeclListNode *Node = C.AllocateDeclListNode(Tail->get<NamedDecl *>());
     Node->Rest = DeclsAsList;
     *Tail = Node;
+    Data.setPointer(Head);
   }
 
   /// Return an array of all the decls that this list represents.
