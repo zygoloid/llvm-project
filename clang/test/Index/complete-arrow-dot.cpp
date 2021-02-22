@@ -28,8 +28,8 @@ void doSomething() {
 
 // CHECK-WITH-CORRECTION: CXXMethod:{ResultType void}{TypedText doSomething}{LeftParen (}{RightParen )} (34) (requires fix-it:{{.*}}
 // CHECK-WITH-CORRECTION-NEXT: FieldDecl:{ResultType int}{TypedText field} (35) (requires fix-it:{{.*}}
-// CHECK-WITH-CORRECTION-NEXT: CXXMethod:{ResultType X &}{TypedText operator=}{LeftParen (}{Placeholder const X &}{RightParen )} (79) (requires fix-it:{{.*}}
 // CHECK-WITH-CORRECTION-NEXT: CXXMethod:{ResultType X &}{TypedText operator=}{LeftParen (}{Placeholder X &&}{RightParen )} (79) (requires fix-it:{{.*}}
+// CHECK-WITH-CORRECTION-NEXT: CXXMethod:{ResultType X &}{TypedText operator=}{LeftParen (}{Placeholder const X &}{RightParen )} (79) (requires fix-it:{{.*}}
 // CHECK-WITH-CORRECTION-NEXT: StructDecl:{TypedText X}{Text ::} (75) (requires fix-it:{{.*}}
 // CHECK-WITH-CORRECTION-NEXT: CXXDestructor:{ResultType void}{TypedText ~X}{LeftParen (}{RightParen )} (79) (requires fix-it:{{.*}}
 // CHECK-WITH-CORRECTION-NEXT: Completion contexts:
@@ -46,8 +46,8 @@ void doSomething() {
 
 // CHECK-ARROW-TO-DOT-WITH-CORRECTION: CXXMethod:{ResultType void}{TypedText doSomething}{LeftParen (}{RightParen )} (34) (requires fix-it:{{.*}}
 // CHECK-ARROW-TO-DOT-WITH-CORRECTION-NEXT: FieldDecl:{ResultType int}{TypedText field} (35) (requires fix-it:{{.*}}
-// CHECK-ARROW-TO-DOT-WITH-CORRECTION-NEXT: CXXMethod:{ResultType X &}{TypedText operator=}{LeftParen (}{Placeholder const X &}{RightParen )} (79) (requires fix-it:{{.*}}
 // CHECK-ARROW-TO-DOT-WITH-CORRECTION-NEXT: CXXMethod:{ResultType X &}{TypedText operator=}{LeftParen (}{Placeholder X &&}{RightParen )} (79) (requires fix-it:{{.*}}
+// CHECK-ARROW-TO-DOT-WITH-CORRECTION-NEXT: CXXMethod:{ResultType X &}{TypedText operator=}{LeftParen (}{Placeholder const X &}{RightParen )} (79) (requires fix-it:{{.*}}
 // CHECK-ARROW-TO-DOT-WITH-CORRECTION-NEXT: StructDecl:{TypedText X}{Text ::} (75) (requires fix-it:{{.*}}
 // CHECK-ARROW-TO-DOT-WITH-CORRECTION-NEXT: CXXDestructor:{ResultType void}{TypedText ~X}{LeftParen (}{RightParen )} (79) (requires fix-it:{{.*}}
 // CHECK-ARROW-TO-DOT-WITH-CORRECTION-NEXT: Completion contexts:

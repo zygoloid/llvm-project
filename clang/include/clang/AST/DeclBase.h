@@ -1221,64 +1221,95 @@ public:
   void print(raw_ostream &OS) const override;
 };
 
+/// A list storing NamedDecls in the lookup tables.
+class DeclListNode {
+  friend class ASTContext; // allocate, deallocate nodes.
+  friend class StoredDeclsList;
+public:
+  using Decls = llvm::PointerUnion<NamedDecl*, DeclListNode*>;
+  class iterator {
+    friend class DeclContextLookupResult;
+    friend class StoredDeclsList;
+
+    Decls Ptr;
+    iterator(Decls Node) : Ptr(Node) { }
+  public:
+    using difference_type = ptrdiff_t;
+    using value_type = NamedDecl*;
+    using pointer = void;
+    using reference = value_type;
+    using iterator_category = std::forward_iterator_tag;
+
+    iterator() = default;
+
+    reference operator*() const {
+      assert(Ptr && "dereferencing end() iterator");
+      if (DeclListNode *CurNode = Ptr.dyn_cast<DeclListNode*>())
+        return CurNode->D;
+      return Ptr.get<NamedDecl*>();
+    }
+    void operator->() const { } // Unsupported.
+    bool operator==(const iterator &X) const { return Ptr == X.Ptr; }
+    bool operator!=(const iterator &X) const { return Ptr != X.Ptr; }
+    inline iterator &operator++() { // ++It
+      assert(!Ptr.isNull() && "Advancing empty iterator");
+
+      if (DeclListNode *CurNode = Ptr.dyn_cast<DeclListNode*>())
+        Ptr = CurNode->Rest;
+      else
+        Ptr = nullptr;
+      return *this;
+    }
+    iterator operator++(int) { // It++
+      iterator temp = *this;
+      ++(*this);
+      return temp;
+    }
+    // Enables the pattern for (iterator I =..., E = I.end(); I != E; ++I)
+    iterator end() { return iterator(); }
+  };
+private:
+  NamedDecl *D = nullptr;
+  Decls Rest = nullptr;
+  DeclListNode(NamedDecl *ND) : D(ND) {}
+};
+
 /// The results of name lookup within a DeclContext. This is either a
 /// single result (with no stable storage) or a collection of results (with
 /// stable storage provided by the lookup table).
 class DeclContextLookupResult {
-  using ResultTy = ArrayRef<NamedDecl *>;
+  friend class StoredDeclsList;
 
-  ResultTy Result;
+  using Decls = DeclListNode::Decls;
 
-  // If there is only one lookup result, it would be invalidated by
-  // reallocations of the name table, so store it separately.
-  NamedDecl *Single = nullptr;
-
-  static NamedDecl *const SingleElementDummyList;
+  /// When in collection form, this is what the Data pointer points to.
+  Decls Result;
 
 public:
   DeclContextLookupResult() = default;
-  DeclContextLookupResult(ArrayRef<NamedDecl *> Result)
-      : Result(Result) {}
-  DeclContextLookupResult(NamedDecl *Single)
-      : Result(SingleElementDummyList), Single(Single) {}
+  DeclContextLookupResult(Decls Result) : Result(Result) {}
 
-  class iterator;
-
-  using IteratorBase =
-      llvm::iterator_adaptor_base<iterator, ResultTy::iterator,
-                                  std::random_access_iterator_tag, NamedDecl *>;
-
-  class iterator : public IteratorBase {
-    value_type SingleElement;
-
-  public:
-    explicit iterator(pointer Pos, value_type Single = nullptr)
-        : IteratorBase(Pos), SingleElement(Single) {}
-
-    reference operator*() const {
-      return SingleElement ? SingleElement : IteratorBase::operator*();
-    }
-  };
-
+  using iterator = DeclListNode::iterator;
   using const_iterator = iterator;
-  using pointer = iterator::pointer;
   using reference = iterator::reference;
 
-  iterator begin() const { return iterator(Result.begin(), Single); }
-  iterator end() const { return iterator(Result.end(), Single); }
+  iterator begin() { return iterator(Result); }
+  iterator end() { return iterator(); }
+  const_iterator begin() const {
+    return const_cast<DeclContextLookupResult*>(this)->begin();
+  }
+  const_iterator end() const { return iterator(); }
 
-  bool empty() const { return Result.empty(); }
-  pointer data() const { return Single ? &Single : Result.data(); }
-  size_t size() const { return Single ? 1 : Result.size(); }
-  reference front() const { return Single ? Single : Result.front(); }
-  reference back() const { return Single ? Single : Result.back(); }
-  reference operator[](size_t N) const { return Single ? Single : Result[N]; }
+  bool empty() const { return Result.isNull();  }
+  bool isSingleResult() const { return Result.dyn_cast<NamedDecl*>(); }
+  reference front() const { return *begin(); }
 
-  // FIXME: Remove this from the interface
-  DeclContextLookupResult slice(size_t N) const {
-    DeclContextLookupResult Sliced = Result.slice(N);
-    Sliced.Single = Single;
-    return Sliced;
+  template<class T> T *find_first() const {
+    for (auto *D : *this)
+      if (T *Decl = dyn_cast<T>(D))
+        return Decl;
+
+    return nullptr;
   }
 };
 

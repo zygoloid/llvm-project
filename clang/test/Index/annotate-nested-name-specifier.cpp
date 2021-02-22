@@ -271,22 +271,22 @@ struct X9 : X8 {
 // CHECK: Punctuation: ")" [57:61 - 57:62] CallExpr=
 
 // Unresolved member and non-member references
-// CHECK: Punctuation: "::" [75:5 - 75:7] DeclRefExpr=[63:10, 64:10]
+// CHECK: Punctuation: "::" [75:5 - 75:7] DeclRefExpr=[64:10, 63:10]
 // CHECK: Identifier: "outer_alias" [75:7 - 75:18] NamespaceRef=outer_alias:10:11
-// CHECK: Punctuation: "::" [75:18 - 75:20] DeclRefExpr=[63:10, 64:10]
+// CHECK: Punctuation: "::" [75:18 - 75:20] DeclRefExpr=[64:10, 63:10]
 // CHECK: Identifier: "inner" [75:20 - 75:25] NamespaceRef=inner:62:13
-// CHECK: Punctuation: "::" [75:25 - 75:27] DeclRefExpr=[63:10, 64:10]
-// CHECK: Identifier: "f" [75:27 - 75:28] OverloadedDeclRef=f[63:10, 64:10]
+// CHECK: Punctuation: "::" [75:25 - 75:27] DeclRefExpr=[64:10, 63:10]
+// CHECK: Identifier: "f" [75:27 - 75:28] OverloadedDeclRef=f[64:10, 63:10]
 // CHECK: Punctuation: "(" [75:28 - 75:29] CallExpr=
 // CHECK: Identifier: "t" [75:29 - 75:30] DeclRefExpr=t:74:12
 // CHECK: Punctuation: ")" [75:30 - 75:31] CallExpr=
-// CHECK: Punctuation: "::" [76:5 - 76:7] MemberRefExpr=[71:8, 72:8]
+// CHECK: Punctuation: "::" [76:5 - 76:7] MemberRefExpr=[72:8, 71:8]
 // CHECK: Identifier: "X4" [76:7 - 76:9] TemplateRef=X4:69:8
-// CHECK: Punctuation: "<" [76:9 - 76:10] MemberRefExpr=[71:8, 72:8]
+// CHECK: Punctuation: "<" [76:9 - 76:10] MemberRefExpr=[72:8, 71:8]
 // CHECK: Identifier: "type" [76:10 - 76:14] TypeRef=X4::type:70:13
-// CHECK: Punctuation: ">" [76:14 - 76:15] MemberRefExpr=[71:8, 72:8]
-// CHECK: Punctuation: "::" [76:15 - 76:17] MemberRefExpr=[71:8, 72:8]
-// CHECK: Identifier: "g" [76:17 - 76:18] OverloadedDeclRef=g[71:8, 72:8]
+// CHECK: Punctuation: ">" [76:14 - 76:15] MemberRefExpr=[72:8, 71:8]
+// CHECK: Punctuation: "::" [76:15 - 76:17] MemberRefExpr=[72:8, 71:8]
+// CHECK: Identifier: "g" [76:17 - 76:18] OverloadedDeclRef=g[72:8, 71:8]
 // CHECK: Punctuation: "(" [76:18 - 76:19] CallExpr=
 // CHECK: Identifier: "t" [76:19 - 76:20] DeclRefExpr=t:74:12
 // CHECK: Punctuation: ")" [76:20 - 76:21] CallExpr=

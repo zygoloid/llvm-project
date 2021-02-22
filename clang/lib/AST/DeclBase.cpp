@@ -1415,15 +1415,12 @@ ExternalASTSource::SetExternalVisibleDeclsForName(const DeclContext *DC,
       if (I == Skip[SkipPos])
         ++SkipPos;
       else
-        List.AddSubsequentDecl(Decls[I]);
+        List.AddDecl(Decls[I]);
     }
   } else {
     // Convert the array to a StoredDeclsList.
     for (auto *D : Decls) {
-      if (List.isNull())
-        List.setOnlyValue(D);
-      else
-        List.AddSubsequentDecl(D);
+        List.AddDecl(D);
     }
   }
 
@@ -1538,10 +1535,7 @@ void DeclContext::removeDecl(Decl *D) {
       if (Map) {
         StoredDeclsMap::iterator Pos = Map->find(ND->getDeclName());
         assert(Pos != Map->end() && "no lookup entry for decl");
-        // Remove the decl only if it is contained.
-        StoredDeclsList::DeclsTy *Vec = Pos->second.getAsVector();
-        if ((Vec && is_contained(*Vec, ND)) || Pos->second.getAsDecl() == ND)
-          Pos->second.remove(ND);
+        Pos->second.remove(ND);
       }
     } while (DC->isTransparentContext() && (DC = DC->getParent()));
   }
@@ -1657,8 +1651,6 @@ void DeclContext::buildLookupImpl(DeclContext *DCtx, bool Internal) {
         buildLookupImpl(InnerCtx, Internal);
   }
 }
-
-NamedDecl *const DeclContextLookupResult::SingleElementDummyList = nullptr;
 
 DeclContext::lookup_result
 DeclContext::lookup(DeclarationName Name) const {
@@ -1935,12 +1927,12 @@ void DeclContext::makeDeclVisibleInContextImpl(NamedDecl *D, bool Internal) {
     // In this case, we never try to replace an existing declaration; we'll
     // handle that when we finalize the list of declarations for this name.
     DeclNameEntries.setHasExternalDecls();
-    DeclNameEntries.AddSubsequentDecl(D);
+    DeclNameEntries.AddDecl(D);
     return;
   }
 
   if (DeclNameEntries.isNull()) {
-    DeclNameEntries.setOnlyValue(D);
+    DeclNameEntries.AddDecl(D);
     return;
   }
 
@@ -1951,7 +1943,7 @@ void DeclContext::makeDeclVisibleInContextImpl(NamedDecl *D, bool Internal) {
   }
 
   // Put this declaration into the appropriate slot.
-  DeclNameEntries.AddSubsequentDecl(D);
+  DeclNameEntries.AddDecl(D);
 }
 
 UsingDirectiveDecl *DeclContext::udir_iterator::operator*() const {

@@ -18,8 +18,8 @@ void g() {
 // order below is source order, which seems best). The crucial fact is that
 // there is one single order that is stable across multiple runs of clang.
 //
-// CHECK: no type named 'error' in 'X'
 // CHECK: no type named 'error' in 'Y'
+// CHECK: no type named 'error' in 'X'
 // CHECK: no matching function for call to 'f'
 
 

@@ -234,8 +234,8 @@ class ConflictingPseudoOverridesInSpecialization<int, T> {
   void foo(T x);
 // CHECK: [[@LINE-1]]:8 | instance-method/C++ | foo | c:@SP>1#T@ConflictingPseudoOverridesInSpecialization>#I#t0.0@F@foo#S0_# | <no-cgname> | Decl,RelChild,RelSpecialization | rel: 3
 // CHECK-NEXT: RelChild
-// CHECK-NEXT: RelSpecialization | foo | c:@ST>2#T#T@ConflictingPseudoOverridesInSpecialization@F@foo#t0.0#
 // CHECK-NEXT: RelSpecialization | foo | c:@ST>2#T#T@ConflictingPseudoOverridesInSpecialization@F@foo#t0.1#
+// CHECK-NEXT: RelSpecialization | foo | c:@ST>2#T#T@ConflictingPseudoOverridesInSpecialization@F@foo#t0.0#
 };
 
 template<typename T, typename U, int x>

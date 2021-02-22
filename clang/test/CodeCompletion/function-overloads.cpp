@@ -42,8 +42,8 @@ void test_adl() {
 // CHECK-CC1-NOT, CHECK-CC2-NOT: OVERLOAD: A(
 // CHECK-CC2: OVERLOAD: [#int#]f(float x, float y)
 // CHECK-CC2-NOT: OVERLOAD: [#int#]f(int i)
-// CHECK-CC3: OVERLOAD: A(<#int#>, int, int)
-// CHECK-CC3: OVERLOAD: A(<#const A &#>)
 // CHECK-CC3: OVERLOAD: A(<#A &&#>)
+// CHECK-CC3: OVERLOAD: A(<#const A &#>)
+// CHECK-CC3: OVERLOAD: A(<#int#>, int, int)
 // CHECK-CC4: OVERLOAD: A(int, <#int#>, int)
 // CHECK-CC5: OVERLOAD: [#void#]g(X, <#Y#>)

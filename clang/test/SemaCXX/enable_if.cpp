@@ -350,16 +350,16 @@ void testIt() {
 namespace PR27122 {
 // (slightly reduced) code that motivated the bug...
 namespace ns {
-void Function(int num)
+void Function(int num) // expected-note {{declared here}} expected-note {{candidate disabled}}
   __attribute__((enable_if(num != 0, "")));
 void Function(int num, int a0)
   __attribute__((enable_if(num != 1, "")));
 }  // namespace ns
 
-using ns::Function; // expected-note 3{{declared here}}
+using ns::Function; // expected-note 2{{declared here}}
 void Run() {
-  Functioon(0); // expected-error{{use of undeclared identifier}} expected-error{{too few arguments}}
-  Functioon(0, 1); // expected-error{{use of undeclared identifier}}
+  Functioon(0); // expected-error{{use of undeclared identifier}} expected-error{{no matching function}}
+  Functioon(0, 1); // expected-error{{use of undeclared identifier}} expected-error{{too many arguments}}
   Functioon(0, 1, 2); // expected-error{{use of undeclared identifier}}
 }
 

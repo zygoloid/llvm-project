@@ -626,9 +626,9 @@ struct bad_promise_6 {
   suspend_always initial_suspend();
   suspend_always final_suspend() noexcept;
   void unhandled_exception();
-  void return_void();           // expected-note 2 {{member 'return_void' first declared here}}
-  void return_value(int) const; // expected-note 2 {{member 'return_value' first declared here}}
-  void return_value(int);
+  void return_void();     // expected-note 2 {{member 'return_void' first declared here}}
+  void return_value(int) const;
+  void return_value(int); // expected-note 2 {{member 'return_value' first declared here}}
 };
 coro<bad_promise_6> bad_implicit_return() { // expected-error {{'bad_promise_6' declares both 'return_value' and 'return_void'}}
   co_await a;

@@ -1,9 +1,9 @@
 // Support parsing of concepts
 
 // RUN:  %clang_cc1 -std=c++20 -verify %s
-template<typename T> concept C1 = true; // expected-note 2{{previous}}
+template<typename T> concept C1 = true; // expected-note {{previous}}
 
-template<typename T> concept C1 = true; // expected-error{{redefinition}}
+template<typename T> concept C1 = true; // expected-error{{redefinition}} expected-note {{previous}}
 
 template<concept T> concept D1 = true;
 // expected-error@-1{{expected template parameter}}

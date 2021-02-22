@@ -179,7 +179,7 @@ using alias = T;
 // CHECK-LOAD: index-templates.cpp:55:14: TypeRef=Unsigned:42:18 Extent=[55:14 - 55:22]
 // CHECK-LOAD: index-templates.cpp:68:6: FunctionTemplate=unresolved_exprs:68:6 (Definition)
 // CHECK-LOAD: index-templates.cpp:69:3: OverloadedDeclRef=swap[60:6, 59:39, 58:27]
-// CHECK-LOAD: index-templates.cpp:71:6: OverloadedDeclRef=f[63:7, 64:9]
+// CHECK-LOAD: index-templates.cpp:71:6: OverloadedDeclRef=f[64:9, 63:7]
 // CHECK-LOAD: index-templates.cpp:72:3: OverloadedDeclRef=swap[58:27, 59:39]
 // CHECK-LOAD: index-templates.cpp:82:6: FunctionTemplate=init_list:82:6 (Definition)
 // CHECK-LOAD: index-templates.cpp:85:14: VarDecl=p:85:14 (Definition)

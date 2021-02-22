@@ -10886,13 +10886,14 @@ void ASTContext::forEachMultiversionedFunctionVersion(
     const FunctionDecl *FD,
     llvm::function_ref<void(FunctionDecl *)> Pred) const {
   assert(FD->isMultiVersion() && "Only valid for multiversioned functions");
-  llvm::SmallDenseSet<const FunctionDecl*, 4> SeenDecls;
+  auto R = FD->getDeclContext()->getRedeclContext()->lookup(FD->getDeclName());
+  llvm::SetVector<NamedDecl*> Decls(R.begin(), R.end());
   FD = FD->getMostRecentDecl();
-  for (auto *CurDecl :
-       FD->getDeclContext()->getRedeclContext()->lookup(FD->getDeclName())) {
-    FunctionDecl *CurFD = CurDecl->getAsFunction()->getMostRecentDecl();
+  llvm::SmallDenseSet<const FunctionDecl*, 4> SeenDecls;
+  for (auto I = Decls.rbegin(), E = Decls.rend(); I != E; ++I) {
+    FunctionDecl *CurFD = (*I)->getAsFunction()->getMostRecentDecl();
     if (CurFD && hasSameType(CurFD->getType(), FD->getType()) &&
-        std::end(SeenDecls) == llvm::find(SeenDecls, CurFD)) {
+        !llvm::is_contained(SeenDecls, CurFD)) {
       SeenDecls.insert(CurFD);
       Pred(CurFD);
     }

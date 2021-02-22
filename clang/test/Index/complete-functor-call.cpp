@@ -25,8 +25,8 @@ int main() {
 
 // RUN: c-index-test -code-completion-at=%s:16:5 %s | FileCheck -check-prefix=CHECK-CC1 %s
 // CHECK-CC1: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter int}{RightParen )} (1)
-// CHECK-CC1: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter T}{RightParen )} (1)
 // CHECK-CC1: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter void *}{Comma , }{Placeholder T}{Comma , }{Placeholder T}{RightParen )} (1)
+// CHECK-CC1: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter T}{RightParen )} (1)
 // CHECK-CC1: Completion contexts:
 // CHECK-CC1-NEXT: Any type
 // CHECK-CC1-NEXT: Any value
@@ -39,8 +39,8 @@ int main() {
 
 // RUN: c-index-test -code-completion-at=%s:17:5 %s | FileCheck -check-prefix=CHECK-CC2 %s
 // CHECK-CC2: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter int}{RightParen )} (1)
-// CHECK-CC2: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter T}{RightParen )} (1)
 // CHECK-CC2: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter void *}{Comma , }{Placeholder T}{Comma , }{Placeholder T}{RightParen )} (1)
+// CHECK-CC2: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter T}{RightParen )} (1)
 // CHECK-CC2: Completion contexts:
 // CHECK-CC2-NEXT: Any type
 // CHECK-CC2-NEXT: Any value
@@ -53,8 +53,8 @@ int main() {
 
 // RUN: c-index-test -code-completion-at=%s:18:5 %s | FileCheck -check-prefix=CHECK-CC3 %s
 // CHECK-CC3: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter int}{RightParen )} (1)
-// CHECK-CC3: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter T}{RightParen )} (1)
 // CHECK-CC3: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter void *}{Comma , }{Placeholder T}{Comma , }{Placeholder T}{RightParen )} (1)
+// CHECK-CC3: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter T}{RightParen )} (1)
 // CHECK-CC3: Completion contexts:
 // CHECK-CC3-NEXT: Any type
 // CHECK-CC3-NEXT: Any value
@@ -91,9 +91,9 @@ int main() {
 
 // RUN: c-index-test -code-completion-at=%s:19:17 %s | FileCheck -check-prefix=CHECK-CC6 %s
 // CHECK-CC6: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter int}{RightParen )} (1)
-// CHECK-CC6: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter T}{RightParen )} (1)
-// CHECK-CC6: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter void *}{Comma , }{Placeholder T}{Comma , }{Placeholder T}{RightParen )} (1)
 // CHECK-CC6: OverloadCandidate:{ResultType const S<T> *}{Text operator()}{LeftParen (}{CurrentParameter const S<T> &s}{RightParen )} (1)
+// CHECK-CC6: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter void *}{Comma , }{Placeholder T}{Comma , }{Placeholder T}{RightParen )} (1)
+// CHECK-CC6: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter T}{RightParen )} (1)
 // CHECK-CC6: Completion contexts:
 // CHECK-CC6-NEXT: Any type
 // CHECK-CC6-NEXT: Any value
@@ -106,9 +106,9 @@ int main() {
 
 // RUN: c-index-test -code-completion-at=%s:19:28 %s | FileCheck -check-prefix=CHECK-CC7 %s
 // CHECK-CC7: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter int}{RightParen )} (1)
-// CHECK-CC7: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter T}{RightParen )} (1)
-// CHECK-CC7: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter int}{Comma , }{Placeholder T}{Comma , }{Placeholder T}{RightParen )} (1)
 // CHECK-CC7: OverloadCandidate:{ResultType const S<T> *}{Text operator()}{LeftParen (}{CurrentParameter const S<T> &s}{RightParen )} (1)
+// CHECK-CC7: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter int}{Comma , }{Placeholder T}{Comma , }{Placeholder T}{RightParen )} (1)
+// CHECK-CC7: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter T}{RightParen )} (1)
 // CHECK-CC7: Completion contexts:
 // CHECK-CC7-NEXT: Any type
 // CHECK-CC7-NEXT: Any value
@@ -178,8 +178,8 @@ int main() {
 
 // RUN: c-index-test -code-completion-at=%s:12:28 %s | FileCheck -check-prefix=CHECK-CC13 %s
 // CHECK-CC13: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter int}{RightParen )} (1)
-// CHECK-CC13: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter T}{RightParen )} (1)
 // CHECK-CC13: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter void *}{Comma , }{Placeholder T}{Comma , }{Placeholder T}{RightParen )} (1)
+// CHECK-CC13: OverloadCandidate:{ResultType void}{Text operator()}{LeftParen (}{CurrentParameter T}{RightParen )} (1)
 // CHECK-CC13: Completion contexts:
 // CHECK-CC13-NEXT: Any type
 // CHECK-CC13-NEXT: Any value
