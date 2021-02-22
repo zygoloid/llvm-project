@@ -181,7 +181,7 @@ public:
     // Convert Decls into a list, in order.
     ASTContext &C = Decls.front()->getASTContext();
     DeclListNode::Decls DeclsAsList = Decls.back();
-    for (size_t I = Decls.size(); I != 0; --I) {
+    for (size_t I = Decls.size() - 1; I != 0; --I) {
       DeclListNode *Node = C.AllocateDeclListNode(Decls[I - 1]);
       Node->Rest = DeclsAsList;
       DeclsAsList = Node;
