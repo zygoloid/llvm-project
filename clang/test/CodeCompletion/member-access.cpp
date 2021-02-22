@@ -57,8 +57,8 @@ struct Bar {
   // CHECK-CC1: member2 (InBase) : [#float#][#Base1::#]member2
   // CHECK-CC1: member3 (InBase)
   // CHECK-CC1: member4
-  // CHECK-CC1: memfun1 (InBase) : [#void#][#Base3::#]memfun1(<#double#>)[# const#]
   // CHECK-CC1: memfun1 (InBase) : [#void#][#Base3::#]memfun1(<#float#>)
+  // CHECK-CC1: memfun1 (InBase) : [#void#][#Base3::#]memfun1(<#double#>)[# const#]
   // CHECK-CC1: memfun1 (Hidden,InBase) : [#void#]Base2::memfun1(<#int#>)
   // CHECK-CC1: memfun2 (InBase) : [#void#][#Base3::#]memfun2(<#int#>)
   // CHECK-CC1: memfun3 : [#int#]memfun3(<#int#>)
@@ -102,8 +102,8 @@ void completeDependentMembers(TemplateClass<T, S> &object,
 // CHECK-CC2: function : [#T#]function()
 // CHECK-CC2: member1 (InBase) : [#int#][#Base1::#]member1
 // CHECK-CC2: member2 (InBase) : [#float#][#Base1::#]member2
-// CHECK-CC2: overload1 : [#void#]overload1(<#const S &#>)
 // CHECK-CC2: overload1 : [#void#]overload1(<#const T &#>)
+// CHECK-CC2: overload1 : [#void#]overload1(<#const S &#>)
 
 // RUN: %clang_cc1 -fsyntax-only -code-completion-at=%s:97:10 %s -o - | FileCheck -check-prefix=CHECK-CC2 %s
 // RUN: %clang_cc1 -fsyntax-only -code-completion-at=%s:98:12 %s -o - | FileCheck -check-prefix=CHECK-CC2 %s
@@ -124,8 +124,8 @@ void completeDependentSpecializedMembers(TemplateClass<int, double> &object,
 // CHECK-CC3: function : [#int#]function()
 // CHECK-CC3: member1 (InBase) : [#int#][#Base1::#]member1
 // CHECK-CC3: member2 (InBase) : [#float#][#Base1::#]member2
-// CHECK-CC3: overload1 : [#void#]overload1(<#const double &#>)
 // CHECK-CC3: overload1 : [#void#]overload1(<#const int &#>)
+// CHECK-CC3: overload1 : [#void#]overload1(<#const double &#>)
 
 // RUN: %clang_cc1 -fsyntax-only -code-completion-at=%s:119:10 %s -o - | FileCheck -check-prefix=CHECK-CC3 %s
 // RUN: %clang_cc1 -fsyntax-only -code-completion-at=%s:120:12 %s -o - | FileCheck -check-prefix=CHECK-CC3 %s
@@ -196,8 +196,8 @@ void test3(const Proxy2 &p) {
 // CHECK-CC8: member3 (InBase) : [#double#][#Base2::#]member3
 // CHECK-CC8: member4 : [#int#]member4
 // CHECK-CC8: member5 : [#int#]member5 (requires fix-it: {184:4-184:6} to ".")
-// CHECK-CC8: memfun1 (InBase) : [#void#][#Base3::#]memfun1(<#double#>)[# const#]
 // CHECK-CC8: memfun1 (InBase) : [#void#][#Base3::#]memfun1(<#float#>)
+// CHECK-CC8: memfun1 (InBase) : [#void#][#Base3::#]memfun1(<#double#>)[# const#]
 // CHECK-CC8: memfun1 (Hidden,InBase) : [#void#]Base2::memfun1(<#int#>)
 // CHECK-CC8: memfun2 (InBase) : [#void#][#Base3::#]memfun2(<#int#>)
 // CHECK-CC8: memfun3 : [#int#]memfun3(<#int#>)
@@ -211,8 +211,8 @@ void test3(const Proxy2 &p) {
 // CHECK-CC9: member3 (InBase) : [#double#][#Base2::#]member3 (requires fix-it: {188:4-188:5} to "->")
 // CHECK-CC9: member4 : [#int#]member4 (requires fix-it: {188:4-188:5} to "->")
 // CHECK-CC9: member5 : [#int#]member5
-// CHECK-CC9: memfun1 (InBase) : [#void#][#Base3::#]memfun1(<#double#>)[# const#] (requires fix-it: {188:4-188:5} to "->")
 // CHECK-CC9: memfun1 (InBase) : [#void#][#Base3::#]memfun1(<#float#>) (requires fix-it: {188:4-188:5} to "->")
+// CHECK-CC9: memfun1 (InBase) : [#void#][#Base3::#]memfun1(<#double#>)[# const#] (requires fix-it: {188:4-188:5} to "->")
 // CHECK-CC9: memfun1 (Hidden,InBase) : [#void#]Base2::memfun1(<#int#>) (requires fix-it: {188:4-188:5} to "->")
 // CHECK-CC9: memfun2 (InBase) : [#void#][#Base3::#]memfun2(<#int#>) (requires fix-it: {188:4-188:5} to "->")
 // CHECK-CC9: memfun3 : [#int#]memfun3(<#int#>) (requires fix-it: {188:4-188:5} to "->")

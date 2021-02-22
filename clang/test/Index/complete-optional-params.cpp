@@ -66,8 +66,8 @@ int main() {
 // CHECK-CC4-NEXT: Objective-C interface
 
 // RUN: c-index-test -code-completion-at=%s:16:9 %s | FileCheck -check-prefix=CHECK-CC5 %s
-// CHECK-CC5: OverloadCandidate:{Text S}{LeftParen (}{CurrentParameter const S &}{RightParen )} (1)
 // CHECK-CC5: OverloadCandidate:{Text S}{LeftParen (}{Optional {CurrentParameter int a = 42}{Optional {Comma , }{Placeholder int = 42}}}{RightParen )} (1)
+// CHECK-CC5: OverloadCandidate:{Text S}{LeftParen (}{CurrentParameter const S &}{RightParen )} (1)
 // CHECK-CC5: Completion contexts:
 // CHECK-CC5-NEXT: Any type
 // CHECK-CC5-NEXT: Any value

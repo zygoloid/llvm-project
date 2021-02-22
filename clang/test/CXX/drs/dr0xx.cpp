@@ -475,10 +475,10 @@ namespace dr39 { // dr39: no
       int &z(int);
     };
     struct B : A, virtual V {
-      using A::x;
-      float &x(float); // expected-note {{found}}
-      using A::y;
-      static float &y(float); // expected-note {{found}}
+      using A::x; // expected-note {{found}}
+      float &x(float);
+      using A::y; // expected-note {{found}}
+      static float &y(float);
       using V::z;
       float &z(float);
     };

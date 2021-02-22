@@ -155,8 +155,8 @@ void dropping_qualifiers_is_incompatible() {
 }
 
 void overloadable_with_global() {
-  void wg_foo(void) __attribute__((overloadable));
-  void wg_foo(int) __attribute__((overloadable)); // expected-note{{previous}}
+  void wg_foo(void) __attribute__((overloadable)); // expected-note{{previous}}
+  void wg_foo(int) __attribute__((overloadable));
 }
 
 int wg_foo; // expected-error{{redefinition of 'wg_foo' as different kind of symbol}}

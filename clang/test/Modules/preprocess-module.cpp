@@ -136,17 +136,17 @@
 // NO-REWRITE: #pragma clang module end
 
 
-__FILE *a; // expected-error-re {{{{missing '#include ".*fwd.h"'|unknown type name '__FILE'}}}}
+__FILE *a; // expected-error-re {{{{declaration of '__FILE' must be imported|unknown type name '__FILE'}}}}
 #if FILE_REWRITE
-// expected-note@Inputs/preprocess/fwd.h:* {{here}}
+// expected-note@file.rewrite.ii:* {{here}}
 #elif FILE_REWRITE_FULL
 // No note diagnostic at all in this case: we've built the 'file' module but not loaded it into this compilation yet.
 #elif REWRITE
-// expected-note@Inputs/preprocess/fwd.h:* {{here}}
+// expected-note@rewrite.ii:* {{here}}
 #elif COPY
-// expected-note@Inputs/preprocess/fwd.h:* {{here}}
+// expected-note@copy.ii:* {{here}}
 #else
-// expected-note@Inputs/preprocess/fwd.h:* {{here}}
+// expected-note@no-rewrite.ii:* {{here}}
 #endif
 
 #ifdef INCLUDE

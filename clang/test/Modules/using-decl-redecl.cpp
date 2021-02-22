@@ -16,6 +16,6 @@ N::clstring y = b;
 
 // Use a typo to trigger import of all declarations in N.
 N::clstrinh s; // expected-error {{did you mean 'clstring'}}
-// expected-note@c.h:2 {{here}}
+// expected-note@a.h:3 {{here}}
 
 namespace M { using N::n; }

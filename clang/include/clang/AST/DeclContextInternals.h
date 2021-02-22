@@ -100,10 +100,11 @@ public:
       return;
     // If this is a list-form, free the list.
     ASTContext &C = getASTContext();
-    for (Decls List = Data.getPointer();
-         DeclListNode *ToDealloc = List.dyn_cast<DeclListNode *>();
-         List = ToDealloc->Rest)
+    Decls List = Data.getPointer();
+    while (DeclListNode *ToDealloc = List.dyn_cast<DeclListNode *>()) {
+      List = ToDealloc->Rest;
       C.DeallocateDeclListNode(ToDealloc);
+    }
   }
 
   ~StoredDeclsList() {
@@ -155,8 +156,54 @@ public:
   void removeExternalDecls() {
     erase_if([](NamedDecl *ND) { return ND->isFromASTFile(); });
 
-    // Don't have any external decls any more.
+    // Don't have any pending external decls any more.
     Data.setInt(0);
+  }
+
+  void replaceExternalDecls(ArrayRef<NamedDecl*> Decls) {
+    // Remove all declarations that are either external or are replaced with
+    // external declarations.
+    erase_if([Decls](NamedDecl *ND) {
+      if (ND->isFromASTFile())
+        return true;
+      for (NamedDecl *D : Decls)
+        if (D->declarationReplaces(ND, /*IsKnownNewer=*/false))
+          return true;
+      return false;
+    });
+
+    // Don't have any pending external decls any more.
+    Data.setInt(0);
+
+    if (Decls.empty())
+      return;
+
+    // Convert Decls into a list, in order.
+    ASTContext &C = Decls.front()->getASTContext();
+    DeclListNode::Decls DeclsAsList = Decls.back();
+    for (size_t I = Decls.size(); I != 0; --I) {
+      DeclListNode *Node = C.AllocateDeclListNode(Decls[I - 1]);
+      Node->Rest = DeclsAsList;
+      DeclsAsList = Node;
+    }
+
+    DeclListNode::Decls Head = Data.getPointer();
+    if (Head.isNull()) {
+      Data.setPointer(DeclsAsList);
+      return;
+    }
+
+    // Find the end of the existing list.
+    // FIXME: It would be possible to preserve information from erase_if to
+    // avoid this rescan looking for the end of the list.
+    DeclListNode::Decls *Tail = &Head;
+    while (DeclListNode *Node = Tail->dyn_cast<DeclListNode *>())
+      Tail = &Node->Rest;
+
+    // Append the Decls.
+    DeclListNode *Node = C.AllocateDeclListNode(Tail->get<NamedDecl *>());
+    Node->Rest = DeclsAsList;
+    *Tail = Node;
   }
 
   /// Return an array of all the decls that this list represents.
@@ -165,37 +212,55 @@ public:
   }
 
   /// If this is a redeclaration of an existing decl, replace the old one with
-  /// D and return true. Otherwise return false.
-  bool HandleRedeclaration(NamedDecl *D, bool IsKnownNewer) {
+  /// D. Otherwise, append D.
+  void addOrReplaceDecl(NamedDecl *D) {
+    const bool IsKnownNewer = true;
+
+    if (isNull()) {
+      Data.setPointer(D);
+      return;
+    }
+
     // Most decls only have one entry in their list, special case it.
     if (NamedDecl *OldD = getAsDecl()) {
-      if (!D->declarationReplaces(OldD, IsKnownNewer))
-        return false;
-      Data.setPointer(D);
-      return true;
+      if (D->declarationReplaces(OldD, IsKnownNewer)) {
+        Data.setPointer(D);
+        return;
+      }
+
+      // Add D after OldD.
+      ASTContext &C = D->getASTContext();
+      DeclListNode *Node = C.AllocateDeclListNode(OldD);
+      Node->Rest = D;
+      Data.setPointer(Node);
+      return;
     }
 
     // Determine if this declaration is actually a redeclaration.
-    for (DeclListNode *N = getAsList(); N;
+    for (DeclListNode *N = getAsList(); /*return in loop*/;
          N = N->Rest.dyn_cast<DeclListNode *>()) {
       if (D->declarationReplaces(N->D, IsKnownNewer)) {
         N->D = D;
-        return true;
+        return;
       }
       if (auto *ND = N->Rest.dyn_cast<NamedDecl *>()) {
         if (D->declarationReplaces(ND, IsKnownNewer)) {
           N->Rest = D;
-          return true;
+          return;
         }
+
+        // Add D after ND.
+        ASTContext &C = D->getASTContext();
+        DeclListNode *Node = C.AllocateDeclListNode(ND);
+        N->Rest = Node;
+        Node->Rest = D;
+        return;
       }
     }
-
-    return false;
   }
 
-  /// Called to add declarations when it is not a redeclaration to merge it
-  /// into the appropriate place in our list.
-  void AddDecl(NamedDecl *D) {
+  /// Add a declaration to the list without checking if it replaces anything.
+  void prependDeclNoReplace(NamedDecl *D) {
     if (isNull()) {
       Data.setPointer(D);
       return;

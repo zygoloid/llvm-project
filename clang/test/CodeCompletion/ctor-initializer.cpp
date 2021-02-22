@@ -25,8 +25,8 @@ struct Derived : public Base1 {
 Derived::Derived() : {}
 // RUN: %clang_cc1 -fsyntax-only -std=c++98 -code-completion-at=%s:25:22 %s -o - | FileCheck -check-prefix=CHECK-CC3 %s
 // RUN: %clang_cc1 -fsyntax-only -std=c++14 -code-completion-at=%s:25:22 %s -o - | FileCheck -check-prefix=CHECK-CC3 %s
-// CHECK-CC3: COMPLETION: Pattern : Base1(<#int#>)
 // CHECK-CC3: COMPLETION: Pattern : Base1()
+// CHECK-CC3: COMPLETION: Pattern : Base1(<#int#>)
 // CHECK-CC3: COMPLETION: Pattern : deriv1(<#int#>)
 
 Derived::Derived(int) try : {
@@ -72,8 +72,8 @@ struct Composition1 {
   Composition1() : b2_elem(2) {}
   // RUN: %clang_cc1 -fsyntax-only -std=c++98 -code-completion-at=%s:72:28 %s -o - | FileCheck -check-prefix=CHECK-CC9 %s
   // RUN: %clang_cc1 -fsyntax-only -std=c++14 -code-completion-at=%s:72:28 %s -o - | FileCheck -check-prefix=CHECK-CC9 %s
-  // CHECK-CC9: OVERLOAD: Base2(<#const Base2 &#>)
   // CHECK-CC9: OVERLOAD: Base2(<#int#>)
+  // CHECK-CC9: OVERLOAD: Base2(<#const Base2 &#>)
   // CHECK-CC9-NOT: OVERLOAD: Composition1
   Composition1(Base2);
   Base2 b2_elem;
@@ -89,8 +89,8 @@ struct Composition2 {
 };
 // RUN: %clang_cc1 -fsyntax-only -std=c++98 -code-completion-at=%s:83:20 %s -o - | FileCheck -check-prefix=CHECK-CC10 %s
 // RUN: %clang_cc1 -fsyntax-only -std=c++14 -code-completion-at=%s:83:20 %s -o - | FileCheck -check-prefix=CHECK-CC10 %s
-// CHECK-CC10: Pattern : c1_elem(<#Base2#>)
 // CHECK-CC10: Pattern : c1_elem()
+// CHECK-CC10: Pattern : c1_elem(<#Base2#>)
 
 template <class T>
 struct Y : T {};

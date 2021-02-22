@@ -10886,16 +10886,19 @@ void ASTContext::forEachMultiversionedFunctionVersion(
     const FunctionDecl *FD,
     llvm::function_ref<void(FunctionDecl *)> Pred) const {
   assert(FD->isMultiVersion() && "Only valid for multiversioned functions");
-  auto R = FD->getDeclContext()->getRedeclContext()->lookup(FD->getDeclName());
-  llvm::SetVector<NamedDecl*> Decls(R.begin(), R.end());
+  llvm::SmallDenseSet<const FunctionDecl*, 4> SeenDecls;
   FD = FD->getMostRecentDecl();
   // FIXME: The order of traversal here matters and depends on the order of
-  // lookup results, which happens to be newest-to-oldest, but we shouldn't
-  // rely on that, especially in the presence of modules.
-  for (auto I = Decls.rbegin(), E = Decls.rend(); I != E; ++I) {
-    FunctionDecl *CurFD = (*I)->getAsFunction()->getMostRecentDecl();
-    if (CurFD && hasSameType(CurFD->getType(), FD->getType()))
+  // lookup results, which happens to be (mostly) oldest-to-newest, but we
+  // shouldn't rely on that.
+  for (auto *CurDecl :
+       FD->getDeclContext()->getRedeclContext()->lookup(FD->getDeclName())) {
+    FunctionDecl *CurFD = CurDecl->getAsFunction()->getMostRecentDecl();
+    if (CurFD && hasSameType(CurFD->getType(), FD->getType()) &&
+        std::end(SeenDecls) == llvm::find(SeenDecls, CurFD)) {
+      SeenDecls.insert(CurFD);
       Pred(CurFD);
+    }
   }
 }
 

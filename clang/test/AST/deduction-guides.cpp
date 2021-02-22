@@ -72,8 +72,8 @@ namespace PR48177 {
 // CHECK-NEXT: TemplateTypeParm {{.*}} 'A'
 // CHECK-NEXT: BuiltinType {{.*}} 'int'
 
-// CHECK: CXXDeductionGuideDecl {{.*}} implicit <deduction guide for Derived> 'auto (T) -> Derived<T, S, A>'
 // CHECK: CXXDeductionGuideDecl {{.*}} implicit <deduction guide for Derived> 'auto (Derived<T, S, A> &&, const typename Derived<T, S, A>::type_alias &) -> Derived<T, S, A>'
+// CHECK: CXXDeductionGuideDecl {{.*}} implicit <deduction guide for Derived> 'auto (T) -> Derived<T, S, A>'
 // CHECK: CXXDeductionGuideDecl {{.*}} implicit <deduction guide for Derived> 'auto (Derived<T, S, A>) -> Derived<T, S, A>'
 // CHECK: CXXDeductionGuideDecl {{.*}} <deduction guide for Derived> 'auto (T, A) -> Derived<T, 1, A>'
 // CHECK: CXXDeductionGuideDecl {{.*}} <deduction guide for Derived> 'auto (int, int) -> Derived<int, 1, int>'
