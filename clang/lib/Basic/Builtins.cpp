@@ -190,8 +190,7 @@ bool Builtin::Context::performsCallback(unsigned ID,
 }
 
 bool Builtin::Context::canBeRedeclared(unsigned ID) const {
-  return ID == Builtin::NotBuiltin ||
-         ID == Builtin::BI__va_start ||
-         (!hasReferenceArgsOrResult(ID) &&
-          !hasCustomTypechecking(ID));
+  return ID == Builtin::NotBuiltin || ID == Builtin::BI__va_start ||
+         (!hasReferenceArgsOrResult(ID) && !hasCustomTypechecking(ID)) ||
+         isInStdNamespace(ID);
 }

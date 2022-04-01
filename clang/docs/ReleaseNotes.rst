@@ -118,6 +118,10 @@ Non-comprehensive list of changes in this release
   - Improve the dump format, dump both bitwidth(if its a bitfield) and field value.
   - Remove anonymous tag locations.
   - Beautify dump format, add indent for nested struct and struct members.
+- Improved ``-O0`` code generation for calls to ``std::move``, ``std::forward``,
+  and ``std::move_if_noexcept``. These are now treated as compiler builtins and
+  implemented directly, rather than instantiating the definition from the
+  standard library.
 
 New Compiler Flags
 ------------------

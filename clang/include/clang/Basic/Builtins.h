@@ -156,6 +156,14 @@ public:
     return strchr(getRecord(ID).Attributes, 'i') != nullptr;
   }
 
+  /// Determines whether this builtin is a C++ standard library function
+  /// that lives in (possibly-versioned) namespace std, possibly a template
+  /// specialization, where the signature is determined by the standard library
+  /// declaration.
+  bool isInStdNamespace(unsigned ID) const {
+    return strchr(getRecord(ID).Attributes, 'z') != nullptr;
+  }
+
   /// Determines whether this builtin has custom typechecking.
   bool hasCustomTypechecking(unsigned ID) const {
     return strchr(getRecord(ID).Attributes, 't') != nullptr;
