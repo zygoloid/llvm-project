@@ -933,8 +933,7 @@ bool Sema::LookupBuiltin(LookupResult &R) {
         // In C++ and OpenCL (spec v1.2 s6.9.f), we don't have any predefined
         // library functions like 'malloc'. Instead, we'll just error.
         if ((getLangOpts().CPlusPlus || getLangOpts().OpenCL) &&
-            (Context.BuiltinInfo.isPredefinedLibFunction(BuiltinID) ||
-             Context.BuiltinInfo.isInStdNamespace(BuiltinID)))
+            Context.BuiltinInfo.isPredefinedLibFunction(BuiltinID))
           return false;
 
         if (NamedDecl *D =

@@ -15199,7 +15199,7 @@ Expr *Sema::FixOverloadedFunctionReference(Expr *E, DeclAccessPair Found,
 
     // FIXME: Duplicated from BuildDeclarationNameExpr.
     if (unsigned BID = Fn->getBuiltinID()) {
-      if (!Context.BuiltinInfo.isPredefinedLibFunction(BID)) {
+      if (!Context.BuiltinInfo.isDirectlyAddressable(BID)) {
         Type = Context.BuiltinFnTy;
         ValueKind = VK_PRValue;
       }
