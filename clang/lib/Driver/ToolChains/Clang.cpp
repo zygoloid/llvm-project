@@ -1200,7 +1200,7 @@ void Clang::AddPreprocessingOptions(Compilation &C, const JobAction &JA,
 }
 
 // FIXME: Move to target hook.
-static bool isSignedCharDefault(const llvm::Triple &Triple) {
+bool tools::isSignedCharDefault(const llvm::Triple &Triple) {
   switch (Triple.getArch()) {
   default:
     return true;
@@ -6768,8 +6768,24 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // option.
   bool ImplyVCPPCVer = false;
   bool ImplyVCPPCXXVer = false;
+  const auto *InputJA = dyn_cast_if_present<JobAction>(Input.getAction());
+  bool IsEDGGeneratedC = InputType == types::TY_PP_C && InputJA &&
+                         D.ShouldUseEDGCompiler(Args, *InputJA);
   const Arg *Std = Args.getLastArg(options::OPT_std_EQ, options::OPT_ansi);
-  if (Std) {
+  if (IsEDGGeneratedC) {
+    Args.ClaimAllArgs(options::OPT_std_EQ);
+    Args.ClaimAllArgs(options::OPT_ansi);
+    CmdArgs.push_back("-std=gnu99");
+    CmdArgs.push_back("-w");
+    if (!FunctionAlignment) {
+      // EDG-generated C code does not specify alignment on functions, but the
+      // ABI requires them to be at least 2-byte aligned in some cases, for
+      // example for address-taken virtual function. We request 2^2 == 4 byte
+      // alignment here to match the EDG driver's behavior.
+      CmdArgs.push_back("-function-alignment");
+      CmdArgs.push_back("2");
+    }
+  } else if (Std) {
     if (Std->getOption().matches(options::OPT_ansi))
       if (types::isCXX(InputType))
         CmdArgs.push_back("-std=c++98");

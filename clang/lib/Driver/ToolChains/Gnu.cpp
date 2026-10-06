@@ -468,6 +468,13 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
         CmdArgs.push_back("-Bdynamic");
     }
     CmdArgs.push_back("-lm");
+  } else if (Args.hasFlag(options::OPT_fedg, options::OPT_fno_edg, false) &&
+             !Args.hasArg(options::OPT_nostdlib, options::OPT_nodefaultlibs,
+                          options::OPT_r)) {
+    SmallString<128> EDGRuntime(D.ResourceDir);
+    llvm::sys::path::append(EDGRuntime, "lib", "libclang_rt.edg.a");
+    if (ToolChain.getVFS().exists(EDGRuntime))
+      CmdArgs.push_back(Args.MakeArgString(EDGRuntime));
   }
 
   // Silence warnings when linking C code with a C++ '-stdlib' argument.

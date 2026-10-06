@@ -201,6 +201,18 @@ if(CLANG_ENABLE_CIR)
   endif()
 endif()
 
+set(CLANG_EDG_SOURCE_DIR "" CACHE PATH
+  "Directory containing the EDG C++ frontend source code.")
+if(CLANG_EDG_SOURCE_DIR)
+  if(NOT EXISTS "${CLANG_EDG_SOURCE_DIR}/src/fe_common.h")
+    message(FATAL_ERROR
+      "CLANG_EDG_SOURCE_DIR (${CLANG_EDG_SOURCE_DIR}) does not appear to contain the EDG frontend source code (missing src/fe_common.h)")
+  endif()
+  set(CLANG_ENABLE_EDG 1)
+else()
+  set(CLANG_ENABLE_EDG 0)
+endif()
+
 include(CheckIncludeFile)
 check_include_file(sys/resource.h CLANG_HAVE_RLIMITS)
 

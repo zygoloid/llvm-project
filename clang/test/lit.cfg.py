@@ -457,6 +457,9 @@ if config.have_llvm_driver:
 if config.clang_enable_cir:
     config.available_features.add("cir-enabled")
 
+if getattr(config, "clang_enable_edg", 0):
+    config.available_features.add("edg-enabled")
+
 if config.use_xcselect:
     config.available_features.add("xcselect")
 

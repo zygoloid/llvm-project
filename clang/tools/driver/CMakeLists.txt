@@ -43,6 +43,7 @@ add_clang_tool(clang
   driver.cpp
   cc1_main.cpp
   cc1as_main.cpp
+  cc1edg_main.cpp
   cc1gen_reproducer_main.cpp
 
   DEPENDS
@@ -66,6 +67,162 @@ clang_target_link_libraries(clang
   clangOptions
   clangSerialization
   )
+
+if(CLANG_ENABLE_EDG)
+  set(EDG_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/edg_gen")
+  file(MAKE_DIRECTORY "${EDG_GEN_DIR}")
+
+  # Temporarily point CMAKE_SOURCE_DIR at CLANG_EDG_SOURCE_DIR so EDG's CMake
+  # files can locate cmake/macro-conf.cmake and cmake/softfloat.cmake.
+  set(EDG_SAVED_CMAKE_SOURCE_DIR "${CMAKE_SOURCE_DIR}")
+  set(CMAKE_SOURCE_DIR "${CLANG_EDG_SOURCE_DIR}")
+  set(EDG_CPFE_USE_ASAN FALSE CACHE BOOL "" FORCE)
+  set(EDG_ENABLE_CONVERSION_WARNINGS FALSE CACHE BOOL "" FORCE)
+
+  include("${CLANG_EDG_SOURCE_DIR}/cmake/macro-conf.cmake")
+
+  math(EXPR CLANG_EDG_VERSION_NUMBER
+    "${CLANG_VERSION_MAJOR} * 10000 + ${CLANG_VERSION_MINOR} * 100 + ${CLANG_VERSION_PATCHLEVEL}")
+
+  # Override macro_configuration_to_defines (called by edgcpp/src/CMakeLists.txt)
+  # to generate cmake_defines.h using EDG's linux-clang-release configuration
+  # plus Clang integration overrides.
+  function(macro_configuration_to_defines target)
+    set(CMAKE_SOURCE_DIR "${CLANG_EDG_SOURCE_DIR}")
+    set(CMAKE_SOURCE_DIR "${CLANG_EDG_SOURCE_DIR}" PARENT_SCOPE)
+    configure_definitions_as_defines("${target}" "linux-clang-release")
+    file(WRITE "${PROJECT_HEADER_OUTPUT_DIRECTORY}/cmake_defines.h.tmp"
+"${configured_cmakedef_definitions}
+/* Clang integration overrides */
+#undef BACK_END_IS_C_GEN_BE
+#define BACK_END_IS_C_GEN_BE 1
+#undef DO_IL_LOWERING
+#define DO_IL_LOWERING 1
+#undef LOWER_FIXED_POINT
+#define LOWER_FIXED_POINT 1
+#undef LOWER_IFUNC
+#define LOWER_IFUNC 1
+#undef LOWER_VARIABLE_LENGTH_ARRAYS
+#define LOWER_VARIABLE_LENGTH_ARRAYS 0
+#undef LOWER_COMPLEX
+#define LOWER_COMPLEX 0
+#undef RECORD_BACKING_EXPRS_WITH_IL_LOWERING
+#define RECORD_BACKING_EXPRS_WITH_IL_LOWERING 1
+#undef COMPILE_MULTIPLE_TRANSLATION_UNITS
+#define COMPILE_MULTIPLE_TRANSLATION_UNITS 1
+#undef SUN_EXTENSIONS_ALLOWED
+#define SUN_EXTENSIONS_ALLOWED 1
+#undef DEFAULT_SUN_COMPATIBILITY
+#define DEFAULT_SUN_COMPATIBILITY 0
+#undef MAKE_FRONT_END_CALLABLE
+#define MAKE_FRONT_END_CALLABLE 1
+#undef USE_EDG_NAMESPACE
+#define USE_EDG_NAMESPACE 1
+#undef NO_USR_INCLUDE
+#define NO_USR_INCLUDE 1
+#undef DEFAULT_USE_PREDEFINED_MACRO_FILE
+#define DEFAULT_USE_PREDEFINED_MACRO_FILE 0
+#undef DEFAULT_GNU_COMPATIBILITY
+#define DEFAULT_GNU_COMPATIBILITY 1
+#undef DEFAULT_CLANG_COMPATIBILITY
+#define DEFAULT_CLANG_COMPATIBILITY 1
+#undef DEFAULT_CLANG_VERSION
+#define DEFAULT_CLANG_VERSION ${CLANG_EDG_VERSION_NUMBER}
+#undef CLANG_IS_GENERATED_CODE_TARGET
+#define CLANG_IS_GENERATED_CODE_TARGET 1
+#undef GCC_IS_GENERATED_CODE_TARGET
+#define GCC_IS_GENERATED_CODE_TARGET 0
+#undef CLANG_TARGET_VERSION_NUMBER
+#define CLANG_TARGET_VERSION_NUMBER ${CLANG_EDG_VERSION_NUMBER}
+#undef DEFAULT_INSTANTIATION_MODE
+#define DEFAULT_INSTANTIATION_MODE tim_used
+#undef DEFAULT_AUTOMATIC_INSTANTIATION_MODE
+#define DEFAULT_AUTOMATIC_INSTANTIATION_MODE 0
+")
+    execute_process(
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${PROJECT_HEADER_OUTPUT_DIRECTORY}/cmake_defines.h.tmp"
+        "${PROJECT_HEADER_OUTPUT_DIRECTORY}/cmake_defines.h"
+    )
+    add_compile_definitions("USE_CMAKE_DEFINES")
+  endfunction()
+
+  function(macro_configuration_to_compile_definitions target)
+  endfunction()
+
+  add_subdirectory("${CLANG_EDG_SOURCE_DIR}/util"
+                   "${CMAKE_CURRENT_BINARY_DIR}/edg_util"
+                   EXCLUDE_FROM_ALL)
+  add_subdirectory("${CLANG_EDG_SOURCE_DIR}/src"
+                   "${CMAKE_CURRENT_BINARY_DIR}/edg_src"
+                   EXCLUDE_FROM_ALL)
+
+  set(CMAKE_SOURCE_DIR "${EDG_SAVED_CMAKE_SOURCE_DIR}")
+
+  get_directory_property(EDG_CORE_SOURCES
+    DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/edg_src"
+    DEFINITION CORE_FRONT_END_SOURCE_FILES)
+  get_directory_property(EDG_HEADER_DIR
+    DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/edg_src"
+    DEFINITION PROJECT_HEADER_OUTPUT_DIRECTORY)
+  set_source_files_properties(${EDG_CORE_SOURCES} PROPERTIES LANGUAGE CXX)
+
+  add_library(clangEDG STATIC EXCLUDE_FROM_ALL ${EDG_CORE_SOURCES})
+  add_dependencies(clangEDG error-info)
+  target_include_directories(clangEDG PRIVATE
+    "${EDG_HEADER_DIR}"
+    "${CLANG_EDG_SOURCE_DIR}/src")
+  target_compile_definitions(clangEDG PRIVATE USE_CMAKE_DEFINES=1)
+  target_compile_options(clangEDG PRIVATE
+    -std=c++14 -fno-exceptions -fno-unwind-tables -fno-rtti -w -x c++)
+
+  target_link_libraries(clang PRIVATE clangEDG)
+
+  # Build the EDG portable EH runtime archive (libclang_rt.edg.a) into Clang's
+  # resource directory so C++ programs with exceptions link seamlessly while
+  # using c_gen_be (DO_FULL_PORTABLE_EH_LOWERING).
+  include(GetClangResourceDir)
+  get_clang_resource_dir(EDG_RT_DIR PREFIX ${LLVM_LIBRARY_OUTPUT_INTDIR}/.. SUBDIR lib)
+  set(EDG_RT_OBJ_DIR "${EDG_GEN_DIR}/rt")
+  file(MAKE_DIRECTORY "${EDG_RT_OBJ_DIR}")
+
+  set(EDG_RT_FILES
+    bad_alloc eh_util error exception newhandler rtti set_new throw typeinfo
+    vars vec_cctor vec_newdel
+  )
+  set(EDG_RT_OBJS)
+  foreach(rt_file IN LISTS EDG_RT_FILES)
+    set(rt_src "${CLANG_EDG_SOURCE_DIR}/lib_src/${rt_file}.c")
+    set(rt_obj "${EDG_RT_OBJ_DIR}/${rt_file}.o")
+    list(APPEND EDG_RT_OBJS "${rt_obj}")
+    add_custom_command(
+      OUTPUT "${rt_obj}"
+      COMMAND "$<TARGET_FILE:clang>"
+        -fedg -x c++ -std=c++23 -fPIC -O2 -w
+        -nostdinc++
+        -DUSE_STDINT_HEADER=1
+        -I "${CLANG_EDG_SOURCE_DIR}/lib_src"
+        -isystem "${CLANG_EDG_SOURCE_DIR}/include_c++"
+        -isystem "${CLANG_EDG_SOURCE_DIR}/include_c99"
+        -Xedg --building_runtime
+        -Xedg --diag_suppress=lossy_conversion
+        -c "${rt_src}" -o "${rt_obj}"
+      DEPENDS clang clang-resource-headers "${rt_src}"
+      COMMENT "Building EDG runtime object ${rt_file}.o"
+    )
+  endforeach()
+
+  set(EDG_RT_ARCHIVE "${EDG_RT_DIR}/libclang_rt.edg.a")
+  add_custom_command(
+    OUTPUT "${EDG_RT_ARCHIVE}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${EDG_RT_DIR}"
+    COMMAND "${CMAKE_COMMAND}" -E rm -f "${EDG_RT_ARCHIVE}"
+    COMMAND "${CMAKE_AR}" rcs "${EDG_RT_ARCHIVE}" ${EDG_RT_OBJS}
+    DEPENDS ${EDG_RT_OBJS}
+    COMMENT "Archiving ${EDG_RT_ARCHIVE}"
+  )
+  add_custom_target(clang-edg-runtime ALL DEPENDS "${EDG_RT_ARCHIVE}")
+endif()
 
 if(WIN32 AND NOT CYGWIN)
   # Prevent versioning if the buildhost is targeting for Win32.

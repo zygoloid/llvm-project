@@ -39,11 +39,22 @@ class CompilerInvocation;
 class DiagnosticsEngine;
 class ExternalSemaSource;
 class FrontendOptions;
+class LangOptions;
+class MacroBuilder;
 class PCHContainerReader;
 class Preprocessor;
 class PreprocessorOptions;
 class PreprocessorOutputOptions;
 class CodeGenOptions;
+class TargetInfo;
+
+/// Initialize the predefined macros for a target and language configuration.
+void InitializePredefinedMacros(const TargetInfo &TI,
+                                const LangOptions &LangOpts,
+                                const FrontendOptions &FEOpts,
+                                const PreprocessorOptions &PPOpts,
+                                const CodeGenOptions &CGOpts,
+                                MacroBuilder &Builder);
 
 /// InitializePreprocessor - Initialize the preprocessor getting it and the
 /// environment ready to process a single file.

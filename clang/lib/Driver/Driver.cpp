@@ -1586,6 +1586,9 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
   Args.ClaimAllArgs(options::OPT_fintegrated_cc1);
   Args.ClaimAllArgs(options::OPT_fno_integrated_cc1);
 
+  Args.ClaimAllArgs(options::OPT_fedg);
+  Args.ClaimAllArgs(options::OPT_fno_edg);
+
   // Ignore -pipe.
   Args.ClaimAllArgs(options::OPT_pipe);
 
@@ -4460,6 +4463,9 @@ Action *Driver::ConstructPhaseAction(
       return C.MakeAction<VerifyPCHJobAction>(Input, types::TY_Nothing);
     if (Args.hasArg(options::OPT_extract_api))
       return C.MakeAction<ExtractAPIJobAction>(Input, types::TY_API_INFO);
+    if (Args.hasFlag(options::OPT_fedg, options::OPT_fno_edg, false) &&
+        types::isCXX(Input->getType()))
+      Input = C.MakeAction<CompileJobAction>(Input, types::TY_PP_C);
     return C.MakeAction<CompileJobAction>(Input, types::TY_LLVM_BC);
   }
   case phases::Backend: {
@@ -6401,6 +6407,20 @@ bool Driver::ShouldUseFlangCompiler(const JobAction &JA) const {
   // And say "no" if this is not a kind of action flang understands.
   if (!isa<PreprocessJobAction>(JA) && !isa<PrecompileJobAction>(JA) &&
       !isa<CompileJobAction>(JA) && !isa<BackendJobAction>(JA))
+    return false;
+
+  return true;
+}
+
+bool Driver::ShouldUseEDGCompiler(const ArgList &Args,
+                                  const JobAction &JA) const {
+  if (!Args.hasFlag(options::OPT_fedg, options::OPT_fno_edg, false))
+    return false;
+
+  if (JA.size() != 1 || !types::isCXX((*JA.input_begin())->getType()))
+    return false;
+
+  if (!isa<PreprocessJobAction>(JA) && !isa<CompileJobAction>(JA))
     return false;
 
   return true;

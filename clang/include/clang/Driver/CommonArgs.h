@@ -170,6 +170,8 @@ llvm::StringRef getLTOParallelism(const llvm::opt::ArgList &Args,
 
 bool areOptimizationsEnabled(const llvm::opt::ArgList &Args);
 
+bool isSignedCharDefault(const llvm::Triple &Triple);
+
 bool isUseSeparateSections(const llvm::Triple &Triple);
 /// Append -ffunction-sections / -fdata-sections to \p CmdArgs when the
 /// corresponding flags are enabled (explicitly or by target default).

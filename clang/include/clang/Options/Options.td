@@ -1088,6 +1088,14 @@ def : Joined<["-"], "Xclangas=">, Group<CompileOnly_Group>,
   Flags<[NoXarchOption]>, Visibility<[ClangOption, CLOption, DXCOption]>,
   Alias<Xclangas>,
   HelpText<"Alias for -Xclangas">, MetaVarName<"<arg>">;
+def Xedg : Separate<["-"], "Xedg">,
+  HelpText<"Pass <arg> to the EDG frontend">, MetaVarName<"<arg>">,
+  Flags<[NoXarchOption]>, Visibility<[ClangOption, CLOption]>,
+  Group<CompileOnly_Group>;
+def : Joined<["-"], "Xedg=">, Group<CompileOnly_Group>,
+  Flags<[NoXarchOption]>, Visibility<[ClangOption, CLOption]>,
+  Alias<Xedg>,
+  HelpText<"Alias for -Xedg">, MetaVarName<"<arg>">;
 def Xcuda_fatbinary : Separate<["-"], "Xcuda-fatbinary">,
   HelpText<"Pass <arg> to fatbinary invocation">, MetaVarName<"<arg>">;
 def Xcuda_ptxas : Separate<["-"], "Xcuda-ptxas">,
@@ -7032,6 +7040,15 @@ def fno_integrated_cc1 : Flag<["-"], "fno-integrated-cc1">,
                          Group<f_Group>,
                          HelpText<"Spawn a separate process for each cc1">;
 
+def fedg : Flag<["-"], "fedg">,
+           Visibility<[ClangOption, CLOption]>,
+           Group<f_Group>,
+           HelpText<"Use the EDG frontend to compile C++">;
+def fno_edg : Flag<["-"], "fno-edg">,
+              Visibility<[ClangOption, CLOption]>,
+              Group<f_Group>,
+              HelpText<"Do not use the EDG frontend to compile C++">;
+
 def fintegrated_objemitter : Flag<["-"], "fintegrated-objemitter">,
   Visibility<[ClangOption, CLOption]>,
   Group<f_Group>,
@@ -8585,6 +8602,7 @@ let Visibility = [CC1Option] in {
 // CompilerInvocation out of a driver-derived argument vector.
 def cc1 : Flag<["-"], "cc1">;
 def cc1as : Flag<["-"], "cc1as">;
+def cc1edg : Flag<["-"], "cc1edg">;
 
 def ast_merge : Separate<["-"], "ast-merge">,
   MetaVarName<"<ast file>">,

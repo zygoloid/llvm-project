@@ -12,6 +12,7 @@
 #include "ToolChains/Arch/ARM.h"
 #include "ToolChains/Arch/RISCV.h"
 #include "ToolChains/Clang.h"
+#include "ToolChains/EDG.h"
 #include "ToolChains/Flang.h"
 #include "ToolChains/InterfaceStubs.h"
 #include "clang/Basic/ObjCRuntime.h"
@@ -720,6 +721,12 @@ Tool *ToolChain::getFlang() const {
   return Flang.get();
 }
 
+Tool *ToolChain::getEDG() const {
+  if (!EDG)
+    EDG.reset(new tools::EDG(*this));
+  return EDG.get();
+}
+
 Tool *ToolChain::buildAssembler() const {
   return new tools::ClangAs(*this);
 }
@@ -1272,6 +1279,7 @@ bool ToolChain::needsGCovInstrumentation(const llvm::opt::ArgList &Args) {
 
 Tool *ToolChain::SelectTool(const JobAction &JA) const {
   if (D.IsFlangMode() && getDriver().ShouldUseFlangCompiler(JA)) return getFlang();
+  if (getDriver().ShouldUseEDGCompiler(Args, JA)) return getEDG();
   if (getDriver().ShouldUseClangCompiler(JA)) return getClang();
   Action::ActionClass AC = JA.getKind();
   if (AC == Action::AssembleJobClass && useIntegratedAs() &&
@@ -1824,6 +1832,13 @@ void ToolChain::AddCXXStdlibLibArgs(const ArgList &Args,
                                     ArgStringList &CmdArgs) const {
   assert(!Args.hasArg(options::OPT_nostdlibxx) &&
          "should not have called this");
+  if (Args.hasFlag(options::OPT_fedg, options::OPT_fno_edg, false)) {
+    SmallString<128> EDGRuntime(getDriver().ResourceDir);
+    llvm::sys::path::append(EDGRuntime, "lib", "libclang_rt.edg.a");
+    if (getVFS().exists(EDGRuntime))
+      CmdArgs.push_back(Args.MakeArgString(EDGRuntime));
+  }
+
   CXXStdlibType Type = GetCXXStdlibType(Args);
 
   switch (Type) {

@@ -995,4 +995,8 @@ def warn_drv_gcc_install_dir_libstdcxx : Warning<
 
 def err_drv_reflection_requires_cxx26 : Error<
   "option '%0' is only supported when compiling in C++26 mode">;
+
+def err_drv_edg_not_built : Error<
+  "the EDG frontend is not enabled in this build of Clang; rebuild with "
+  "-DCLANG_EDG_SOURCE_DIR=<path> to enable '-fedg'">;
 }

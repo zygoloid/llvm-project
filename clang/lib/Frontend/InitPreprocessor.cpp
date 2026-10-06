@@ -848,7 +848,7 @@ void DefineFixedPointMacros(const TargetInfo &TI, MacroBuilder &Builder,
         ConstructFixedPointLiteral(llvm::APFixedPoint::getMin(FXSema), Suffix));
 }
 
-static void InitializePredefinedMacros(const TargetInfo &TI,
+void clang::InitializePredefinedMacros(const TargetInfo &TI,
                                        const LangOptions &LangOpts,
                                        const FrontendOptions &FEOpts,
                                        const PreprocessorOptions &PPOpts,

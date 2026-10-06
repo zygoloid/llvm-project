@@ -27,6 +27,7 @@ config.clang_staticanalyzer = @CLANG_ENABLE_STATIC_ANALYZER@
 config.clang_staticanalyzer_z3 = @LLVM_WITH_Z3@
 config.clang_staticanalyzer_z3_mock = @TEST_WITH_Z3_MOCK@
 config.clang_enable_cir = @CLANG_ENABLE_CIR@
+config.clang_enable_edg = @CLANG_ENABLE_EDG@
 config.clang_examples = @CLANG_BUILD_EXAMPLES@
 config.llvm_examples = @LLVM_INCLUDE_EXAMPLES@
 config.enable_shared = @ENABLE_SHARED@

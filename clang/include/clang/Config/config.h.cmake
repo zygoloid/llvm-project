@@ -85,6 +85,9 @@
 /* Whether CIR is built into Clang */
 #cmakedefine01 CLANG_ENABLE_CIR
 
+/* Whether the EDG C++ frontend is built into Clang */
+#cmakedefine01 CLANG_ENABLE_EDG
+
 /* Whether to use xcselect to find the macOS SDK */
 #cmakedefine CLANG_USE_XCSELECT
 

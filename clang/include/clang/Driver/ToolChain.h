@@ -166,6 +166,7 @@ private:
 
   mutable std::unique_ptr<Tool> Clang;
   mutable std::unique_ptr<Tool> Flang;
+  mutable std::unique_ptr<Tool> EDG;
   mutable std::unique_ptr<Tool> Assemble;
   mutable std::unique_ptr<Tool> Link;
   mutable std::unique_ptr<Tool> StaticLibTool;
@@ -176,6 +177,7 @@ private:
 
   Tool *getClang() const;
   Tool *getFlang() const;
+  Tool *getEDG() const;
   Tool *getAssemble() const;
   Tool *getLink() const;
   Tool *getStaticLibTool() const;
